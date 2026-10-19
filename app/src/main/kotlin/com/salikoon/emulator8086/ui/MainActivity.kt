@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.TextView
+import android.widget.LinearLayout
 
 internal object AppKeys {
     const val CODE = "assembly.code"
@@ -24,24 +25,27 @@ class MainActivity : AppCompatActivity() {
         body.addView(UiKit.text(this, "Build something\nbrilliant.", 25, UiKit.INK, true))
         body.addView(UiKit.text(this, "Write 16-bit Assembly, run it step by step, and see exactly what your CPU is doing.", 14, UiKit.MUTED))
         UiKit.spacer(this, body, 8)
-        body.addView(UiKit.sectionLabel(this, "PICK UP WHERE YOU LEFT OFF"))
-        UiKit.card(this, body, "Create new program", "Start with an empty Assembly file") { openEditor() }
-        UiKit.card(this, body, "Open a program", "Choose a text or .asm file from this device") { chooseFile() }
-        UiKit.card(this, body, "Assembly templates", "Start from worked examples and loops") { startActivity(Intent(this, TemplateActivity::class.java)) }
-        UiKit.card(this, body, "Help & instruction reference", "Learn supported instructions and syntax") { startActivity(Intent(this, HelpActivity::class.java)) }
         val prefs = getSharedPreferences("emulator", MODE_PRIVATE)
         val recent = prefs.getString("recent_code", null)
         if (!recent.isNullOrBlank()) {
-            UiKit.spacer(this, body, 4)
-            body.addView(UiKit.text(this, "Continue", 17, 0xFF20212B.toInt(), true))
-            UiKit.card(this, body, prefs.getString("recent_title", "Recent program") ?: "Recent program", "Reopen the last program",) {
+            body.addView(UiKit.sectionLabel(this, "CONTINUE YOUR LAST SESSION"))
+            UiKit.card(this, body, prefs.getString("recent_title", "Recent program") ?: "Recent program", "Pick up where you left off") {
                 openEditor(recent, prefs.getString("recent_title", "Untitled") ?: "Untitled")
             }
         }
-        UiKit.spacer(this, body, 8)
-        body.addView(UiKit.button(this, "⚙   Settings", secondary = true) { startActivity(Intent(this, SettingsActivity::class.java)) })
-        UiKit.spacer(this, body, 6)
-        body.addView(UiKit.button(this, "ⓘ   About 8086 Emulator", secondary = true) { startActivity(Intent(this, AboutActivity::class.java)) })
+        body.addView(UiKit.sectionLabel(this, "QUICK ACTIONS"))
+        val firstRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        UiKit.squareCard(this, firstRow, "New program", "Start from scratch", "＋") { openEditor() }
+        UiKit.squareCard(this, firstRow, "Open file", "Choose an .asm file", "↗") { chooseFile() }
+        body.addView(firstRow, LinearLayout.LayoutParams(-1, -2))
+        val secondRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        UiKit.squareCard(this, secondRow, "Templates", "Explore examples", "▤") { startActivity(Intent(this, TemplateActivity::class.java)) }
+        UiKit.squareCard(this, secondRow, "Instruction help", "Browse the guide", "?") { startActivity(Intent(this, HelpActivity::class.java)) }
+        body.addView(secondRow, LinearLayout.LayoutParams(-1, -2))
+        val thirdRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        UiKit.squareCard(this, thirdRow, "Settings", "Tune your editor", "⚙") { startActivity(Intent(this, SettingsActivity::class.java)) }
+        UiKit.squareCard(this, thirdRow, "About", "About the 8086 lab", "ⓘ") { startActivity(Intent(this, AboutActivity::class.java)) }
+        body.addView(thirdRow, LinearLayout.LayoutParams(-1, -2))
         status = UiKit.statusBar(this, root)
     }
 

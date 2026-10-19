@@ -149,6 +149,34 @@ internal object UiKit {
         parent.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, 10) })
     }
 
+    /** Two-column home action tile with a 1:1 footprint on common phone widths. */
+    fun squareCard(activity: AppCompatActivity, parent: LinearLayout, title: String, detail: String, icon: String, action: () -> Unit) {
+        val colorIndex = title.hashCode().absoluteValueSafe() % badgeColors.size
+        val tile = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.TOP or Gravity.START
+            setPadding(dp(activity, 14), dp(activity, 14), dp(activity, 12), dp(activity, 12))
+            background = RippleDrawable(ColorStateList.valueOf(0x145553E8), roundRect(activity, Color.WHITE, 0xFFE4E7F0.toInt()), null)
+            elevation = dp(activity, 2).toFloat()
+            isClickable = true; isFocusable = true
+            setOnClickListener { action() }
+            pressMotion(this)
+        }
+        val badge = TextView(activity).apply {
+            text = icon; textSize = 22f; gravity = Gravity.CENTER; setTextColor(badgeInks[colorIndex])
+            background = roundRect(activity, badgeColors[colorIndex], null)
+        }
+        tile.addView(badge, LinearLayout.LayoutParams(dp(activity, 44), dp(activity, 44)))
+        tile.addView(View(activity), LinearLayout.LayoutParams(1, dp(activity, 8)))
+        tile.addView(text(activity, title, 15, INK, true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        tile.addView(text(activity, detail, 11, MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        val widthPx = activity.resources.displayMetrics.widthPixels
+        val tileSide = ((widthPx - 2 * dp(activity, 18) - dp(activity, 20)) / 2).coerceAtLeast(dp(activity, 128))
+        parent.addView(tile, LinearLayout.LayoutParams(0, tileSide, 1f).apply {
+            leftMargin = dp(activity, 5); rightMargin = dp(activity, 5); bottomMargin = dp(activity, 10)
+        })
+    }
+
     fun statusBar(activity: AppCompatActivity, parent: LinearLayout): TextView = TextView(activity).apply {
         visibility = View.GONE; textSize = 12f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.TOP or Gravity.START
         maxHeight = dp(activity, 190); isVerticalScrollBarEnabled = true; android.text.method.ScrollingMovementMethod.getInstance().also { movementMethod = it }
