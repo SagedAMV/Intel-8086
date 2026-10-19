@@ -1,0 +1,43 @@
+<resources>
+    <string name="app_name">8086 Emulator</string>
+    <string-array name="keywords">
+        <item>MOV </item>
+        <item>ADD</item>
+        <item>SUB</item>
+        <item>MUL</item>
+        <item>DIV</item>
+        <item>INC</item>
+        <item>DEC</item>
+        <item>XOR</item>
+        <item>NOT</item>
+        <item>END</item>
+        <item>RET</item>
+        <item>MAIN</item>
+        <item>ENDP</item>
+
+        <item>ORG</item>
+        <item>.DATA</item>
+        <item>.CODE</item>
+
+        <item>SUM</item>
+        <item>DIFFERENCE</item>
+        <item>MULTIPLICATION</item>
+        <item>DIVISION</item>
+        <item>DB</item>
+        <item>DW</item>
+
+        <item>INT</item>
+        <item>CMP</item>
+        <item>JZ</item>
+        <item>JG</item>
+        <item>JL</item>
+        <item>JB</item>
+        <item>JNZ</item>
+        <item>JGE</item>
+        <item>JLE</item>
+        <item>JC</item>
+    </string-array>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+
+</resources>
