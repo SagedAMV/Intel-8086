@@ -20,9 +20,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val root = UiKit.screen(this, "8086 Emulator")
         val body = UiKit.scrollContent(this, root)
-        body.addView(UiKit.text(this, "Your mobile Assembly workbench", 19, 0xFF20212B.toInt(), true))
-        body.addView(UiKit.text(this, "Create a program, explore a template, then inspect every 8086 step.", 14, 0xFF747687.toInt()))
-        UiKit.spacer(this, body, 12)
+        body.addView(UiKit.sectionLabel(this, "YOUR ASSEMBLY WORKSPACE"))
+        body.addView(UiKit.text(this, "Build something\nbrilliant.", 25, UiKit.INK, true))
+        body.addView(UiKit.text(this, "Write 16-bit Assembly, run it step by step, and see exactly what your CPU is doing.", 14, UiKit.MUTED))
+        UiKit.spacer(this, body, 8)
+        body.addView(UiKit.sectionLabel(this, "PICK UP WHERE YOU LEFT OFF"))
         UiKit.card(this, body, "Create new program", "Start with an empty Assembly file") { openEditor() }
         UiKit.card(this, body, "Open a program", "Choose a text or .asm file from this device") { chooseFile() }
         UiKit.card(this, body, "Assembly templates", "Start from worked examples and loops") { startActivity(Intent(this, TemplateActivity::class.java)) }
@@ -36,10 +38,10 @@ class MainActivity : AppCompatActivity() {
                 openEditor(recent, prefs.getString("recent_title", "Untitled") ?: "Untitled")
             }
         }
-        UiKit.spacer(this, body, 12)
-        body.addView(UiKit.button(this, "Settings", secondary = true) { startActivity(Intent(this, SettingsActivity::class.java)) })
+        UiKit.spacer(this, body, 8)
+        body.addView(UiKit.button(this, "⚙   Settings", secondary = true) { startActivity(Intent(this, SettingsActivity::class.java)) })
         UiKit.spacer(this, body, 6)
-        body.addView(UiKit.button(this, "About 8086 Emulator", secondary = true) { startActivity(Intent(this, AboutActivity::class.java)) })
+        body.addView(UiKit.button(this, "ⓘ   About 8086 Emulator", secondary = true) { startActivity(Intent(this, AboutActivity::class.java)) })
         status = UiKit.statusBar(this, root)
     }
 

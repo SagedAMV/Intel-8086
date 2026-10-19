@@ -10,8 +10,14 @@ class HelpActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val root = UiKit.screen(this, "Help & instructions", back = true)
         val body = UiKit.scrollContent(this, root)
-        body.addView(UiKit.text(this, "Select an instruction for syntax and usage. Programs support one instruction per line; labels end with a colon and semicolons begin comments.", 14, 0xFF747687.toInt()))
-        body.addView(UiKit.text(this, "General registers: AX, BX, CX, DX, SI, DI, BP, SP. Byte aliases include AH/AL, BH/BL, CH/CL and DH/DL. Numeric literals may be decimal, binary (…B), hexadecimal (…H or 0x…).", 14))
+        body.addView(UiKit.sectionLabel(this, "QUICK REFERENCE"))
+        body.addView(UiKit.text(this, "The instruction field guide", 21, UiKit.INK, true))
+        body.addView(UiKit.text(this, "Tap an instruction for syntax and examples. Use one instruction per line, end labels with a colon, and start comments with a semicolon.", 14, UiKit.MUTED))
+        body.addView(UiKit.text(this, "Registers: AX, BX, CX, DX, SI, DI, BP, SP. Byte aliases: AH/AL, BH/BL, CH/CL, DH/DL. Numbers may be decimal, binary (…B), or hexadecimal (…H / 0x…).", 13, UiKit.INK).apply {
+            setPadding(UiKit.dp(this@HelpActivity, 14), UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 14), UiKit.dp(this@HelpActivity, 12))
+            background = UiKit.surface(this@HelpActivity)
+        })
+        body.addView(UiKit.sectionLabel(this, "AVAILABLE INSTRUCTIONS"))
         var loadError: String? = null
         try {
             val raw = resources.openRawResource(com.salikoon.emulator8086.R.raw.help_manual).bufferedReader().use { it.readText() }
@@ -23,7 +29,10 @@ class HelpActivity : AppCompatActivity() {
                 UiKit.card(this, body, name, syntax) { showDetails(item) }
             }
         } catch (e: Exception) { loadError = "Instruction reference unavailable: ${e.message ?: "unknown error"}" }
-        body.addView(UiKit.text(this, "Runtime support includes data transfer, arithmetic and bitwise instructions, conditional jumps, LOOP, flag control, NOP, HLT, and DOS INT 21h character I/O. Unsupported directives are not assembled.", 13, 0xFF747687.toInt()))
+        body.addView(UiKit.text(this, "Runtime support includes data transfer, arithmetic and bitwise instructions, conditional jumps, LOOP, flag control, NOP, HLT, and DOS INT 21h character I/O. Unsupported directives are not assembled.", 13, UiKit.MUTED).apply {
+            setPadding(UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 10), UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 10))
+            background = UiKit.surface(this@HelpActivity)
+        })
         val status = UiKit.statusBar(this, root)
         loadError?.let { UiKit.showError(this, status, it) }
     }

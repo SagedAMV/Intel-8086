@@ -23,34 +23,50 @@ class EmulateActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         source = intent.getStringExtra(AppKeys.CODE).orEmpty()
         val root = UiKit.screen(this, "8086 Emulator", back = true)
-        root.addView(UiKit.text(this, intent.getStringExtra(AppKeys.TITLE) ?: "Program state", 14, 0xFF747687.toInt()))
+        root.addView(UiKit.sectionLabel(this, "LIVE CPU SESSION"))
+        root.addView(UiKit.text(this, intent.getStringExtra(AppKeys.TITLE) ?: "Program state", 13, UiKit.MUTED, true))
         input = EditText(this).apply {
-            hint = "Input character for INT 21h / AH=1 (optional)"
+            hint = "Optional character input · INT 21h / AH=1"
+            setHintTextColor(UiKit.MUTED)
+            setTextColor(UiKit.INK)
             inputType = InputType.TYPE_CLASS_TEXT
-            textSize = 14f
+            textSize = 13f
             setSingleLine(true)
+            setPadding(UiKit.dp(this@EmulateActivity, 14), 0, UiKit.dp(this@EmulateActivity, 14), 0)
+            background = UiKit.surface(this@EmulateActivity)
         }
-        root.addView(input, LinearLayout.LayoutParams(-1, UiKit.dp(this@EmulateActivity, 52)))
+        root.addView(input, LinearLayout.LayoutParams(-1, UiKit.dp(this@EmulateActivity, 50)).apply { bottomMargin = UiKit.dp(this@EmulateActivity, 8) })
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(UiKit.button(this, "Step") { executeStep() }, LinearLayout.LayoutParams(0, UiKit.dp(this@EmulateActivity, 48), 1f).apply { rightMargin = UiKit.dp(this@EmulateActivity, 4) })
         controls.addView(UiKit.button(this, "Run ▶") { runToEnd() }, LinearLayout.LayoutParams(0, UiKit.dp(this@EmulateActivity, 48), 1f).apply { leftMargin = UiKit.dp(this@EmulateActivity, 4); rightMargin = UiKit.dp(this@EmulateActivity, 4) })
         controls.addView(UiKit.button(this, "Reset", secondary = true) { reset() }, LinearLayout.LayoutParams(0, UiKit.dp(this@EmulateActivity, 48), 1f).apply { leftMargin = UiKit.dp(this@EmulateActivity, 4) })
         root.addView(controls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = UiKit.dp(this@EmulateActivity, 8); bottomMargin = UiKit.dp(this@EmulateActivity, 12) })
         val body = UiKit.scrollContent(this, root)
-        current = UiKit.text(this, "", 14, 0xFF4A00E0.toInt(), true)
-        body.addView(current)
-        body.addView(UiKit.text(this, "REGISTERS", 13, 0xFF747687.toInt(), true))
-        registers = UiKit.text(this, "", 15, 0xFF20212B.toInt()).apply {
-            typeface = android.graphics.Typeface.MONOSPACE
+        current = UiKit.text(this, "", 14, UiKit.PURPLE, true).apply {
             setPadding(UiKit.dp(this@EmulateActivity, 14), UiKit.dp(this@EmulateActivity, 12), UiKit.dp(this@EmulateActivity, 14), UiKit.dp(this@EmulateActivity, 12))
-            background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = UiKit.dp(this@EmulateActivity, 14).toFloat(); setColor(android.graphics.Color.WHITE) }
+            background = UiKit.surface(this@EmulateActivity)
+        }
+        body.addView(UiKit.sectionLabel(this, "INSTRUCTION POINTER"))
+        body.addView(current, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = UiKit.dp(this@EmulateActivity, 7) })
+        body.addView(UiKit.sectionLabel(this, "REGISTERS · HEX / DECIMAL"))
+        registers = UiKit.text(this, "", 14, 0xFFDCE7FF.toInt()).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(UiKit.dp(this@EmulateActivity, 15), UiKit.dp(this@EmulateActivity, 14), UiKit.dp(this@EmulateActivity, 15), UiKit.dp(this@EmulateActivity, 14))
+            background = UiKit.surface(this@EmulateActivity, dark = true)
         }
         body.addView(registers)
-        body.addView(UiKit.text(this, "FLAGS", 13, 0xFF747687.toInt(), true))
-        flags = UiKit.text(this, "", 14, 0xFF20212B.toInt())
+        body.addView(UiKit.sectionLabel(this, "STATUS FLAGS"))
+        flags = UiKit.text(this, "", 13, 0xFF087E77.toInt(), true).apply {
+            setPadding(UiKit.dp(this@EmulateActivity, 12), UiKit.dp(this@EmulateActivity, 10), UiKit.dp(this@EmulateActivity, 12), UiKit.dp(this@EmulateActivity, 10))
+            background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = UiKit.dp(this@EmulateActivity, 13).toFloat(); setColor(0xFFE5F7F4.toInt()) }
+        }
         body.addView(flags)
-        body.addView(UiKit.text(this, "OUTPUT", 13, 0xFF747687.toInt(), true))
-        output = UiKit.text(this, "", 16, 0xFF20212B.toInt())
+        body.addView(UiKit.sectionLabel(this, "PROGRAM OUTPUT"))
+        output = UiKit.text(this, "", 15, 0xFF8AF0B0.toInt()).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(UiKit.dp(this@EmulateActivity, 14), UiKit.dp(this@EmulateActivity, 12), UiKit.dp(this@EmulateActivity, 14), UiKit.dp(this@EmulateActivity, 12))
+            background = UiKit.surface(this@EmulateActivity, dark = true)
+        }
         body.addView(output)
         status = UiKit.statusBar(this, root)
         reset()

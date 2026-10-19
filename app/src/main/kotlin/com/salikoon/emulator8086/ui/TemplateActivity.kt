@@ -10,7 +10,9 @@ class TemplateActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val root = UiKit.screen(this, "Assembly templates", back = true)
         val body = UiKit.scrollContent(this, root)
-        body.addView(UiKit.text(this, "Choose an example to load it into the editor. You can modify it before running.", 14, 0xFF747687.toInt()))
+        body.addView(UiKit.sectionLabel(this, "START WITH A WORKING EXAMPLE"))
+        body.addView(UiKit.text(this, "Learn by changing real code", 21, UiKit.INK, true))
+        body.addView(UiKit.text(this, "Choose a program to open it in the editor. Make it yours, then run it step by step.", 14, UiKit.MUTED))
         var loadError: String? = null
         try {
             val json = resources.openRawResource(com.salikoon.emulator8086.R.raw.templates).bufferedReader().use { it.readText() }

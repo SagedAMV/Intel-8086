@@ -20,7 +20,10 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="colorPrimary">@color/app_purple</item>
-        <item name="colorSecondary">@color/app_blue</item>
+        <item name="colorSecondary">@color/app_cyan</item>
+        <item name="colorAccent">@color/app_cyan</item>
+        <item name="android:statusBarColor">#171D3B</item>
+        <item name="android:navigationBarColor">@color/app_canvas</item>
     </style>
 
     <style name="MyEmulatorTheme2" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
