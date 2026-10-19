@@ -50,14 +50,19 @@ class EditorActivity : AppCompatActivity() {
         if (code.isBlank()) { UiKit.showError(this, status, "Write some code first."); return }
         val issues = AssemblyEngine.validate(code)
         if (issues.isEmpty()) UiKit.showSuccess(this, status, "Syntax and labels look good.")
-        else UiKit.showError(this, status, issues.first().message)
+        else UiKit.showError(this, status, formatIssues(issues))
+    }
+
+    private fun formatIssues(issues: List<com.salikoon.emulator8086.engine.ValidationIssue>): String = buildString {
+        append("Found ${issues.size} issue(s):")
+        issues.forEach { issue -> append("\nLine ${issue.line}: ${issue.message}") }
     }
 
     private fun runProgram() {
         val code = editor.text.toString()
         if (code.isBlank()) { UiKit.showError(this, status, "Write some code first."); return }
         val issues = AssemblyEngine.validate(code)
-        if (issues.isNotEmpty()) { UiKit.showError(this, status, issues.first().message); return }
+        if (issues.isNotEmpty()) { UiKit.showError(this, status, formatIssues(issues)); return }
         UiKit.clearStatus(status)
         getSharedPreferences("emulator", MODE_PRIVATE).edit().putString("recent_code", code).putString("recent_title", title).apply()
         startActivity(Intent(this, EmulateActivity::class.java).putExtra(AppKeys.CODE, code).putExtra(AppKeys.TITLE, title))

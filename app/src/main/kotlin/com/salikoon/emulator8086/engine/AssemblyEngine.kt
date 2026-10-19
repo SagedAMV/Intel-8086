@@ -224,8 +224,110 @@ class AssemblyEngine(val source: String, private val input: String = "") {
     companion object {
         private val byteRegisters = setOf("AH", "AL", "BH", "BL", "CH", "CL", "DH", "DL")
         private val byteAliases = mapOf("AH" to ("AX" to true), "AL" to ("AX" to false), "BH" to ("BX" to true), "BL" to ("BX" to false), "CH" to ("CX" to true), "CL" to ("CX" to false), "DH" to ("DX" to true), "DL" to ("DX" to false))
-        private val supportedInstructions = setOf("NOP", "HLT", "MOV", "XCHG", "ADD", "SUB", "CMP", "AND", "OR", "XOR", "TEST", "INC", "DEC", "NEG", "NOT", "MUL", "DIV", "INT", "STC", "CLC", "CMC", "STD", "CLD", "CLI", "JMP", "JA", "JNBE", "JNC", "JAE", "JNB", "JC", "JB", "JNAE", "JBE", "JNA", "JCXZ", "JZ", "JE", "JG", "JNLE", "JGE", "JNL", "JL", "JNGE", "JLE", "JNZ", "JNE", "JNO", "JNP", "JPO", "JNS", "JO", "JP", "JPE", "JS", "LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ")
-        private val jumpInstructions = setOf("JMP", "JA", "JNBE", "JNC", "JAE", "JNB", "JC", "JB", "JNAE", "JBE", "JNA", "JCXZ", "JZ", "JE", "JG", "JNLE", "JGE", "JNL", "JL", "JNGE", "JLE", "JNZ", "JNE", "JNO", "JNP", "JPO", "JNS", "JO", "JP", "JPE", "JS", "LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ")
-        fun validate(source: String): List<ValidationIssue> = try { AssemblyEngine(source); emptyList() } catch (e: Exception) { listOf(ValidationIssue(0, e.message ?: "Invalid assembly program")) }
+        private val noOperandInstructions = setOf("NOP", "HLT", "STC", "CLC", "CMC", "STD", "CLD", "CLI")
+        private val oneOperandInstructions = setOf("INC", "DEC", "NEG", "NOT", "MUL", "DIV", "INT", "JMP", "JA", "JNBE", "JNC", "JAE", "JNB", "JC", "JB", "JNAE", "JBE", "JNA", "JCXZ", "JZ", "JE", "JG", "JNLE", "JGE", "JNL", "JL", "JNGE", "JLE", "JNZ", "JNE", "JNO", "JNP", "JPO", "JNS", "JO", "JP", "JPE", "JS", "LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ")
+        private val twoOperandInstructions = setOf("MOV", "XCHG", "ADD", "SUB", "CMP", "AND", "OR", "XOR", "TEST")
+        private val operandCounts = buildMap {
+            noOperandInstructions.forEach { put(it, 0) }
+            oneOperandInstructions.forEach { put(it, 1) }
+            twoOperandInstructions.forEach { put(it, 2) }
+        }
+        private val supportedInstructions = operandCounts.keys
+        private val jumpInstructions = oneOperandInstructions - setOf("INC", "DEC", "NEG", "NOT", "MUL", "DIV", "INT")
+        private val allRegisters = setOf("AX", "BX", "CX", "DX", "SI", "DI", "BP", "SP", "CS", "DS", "ES", "SS", "IP") + byteRegisters
+        private val addressRegisters = setOf("BX", "BP", "SI", "DI")
+        private val labelPattern = Regex("[A-Z_.$?][A-Z0-9_.$?]*")
+
+        fun validate(source: String): List<ValidationIssue> {
+            val issues = mutableListOf<ValidationIssue>()
+            val labels = linkedMapOf<String, Int>()
+            val instructions = mutableListOf<Pair<Int, String>>()
+
+            source.lineSequence().forEachIndexed { index, raw ->
+                var code = raw.substringBefore(';').trim().uppercase()
+                if (code.isEmpty()) return@forEachIndexed
+                val labelEnd = code.indexOf(':')
+                if (labelEnd >= 0) {
+                    val label = code.substring(0, labelEnd).trim()
+                    if (!labelPattern.matches(label)) {
+                        issues += ValidationIssue(index + 1, "Invalid label '$label': labels must start with a letter or underscore and contain only letters, digits, _, ., $, or ?.")
+                    } else if (labels.containsKey(label)) {
+                        issues += ValidationIssue(index + 1, "Duplicate label '$label'; it was already declared on line ${labels.getValue(label)}.")
+                    } else {
+                        labels[label] = index + 1
+                    }
+                    code = code.substring(labelEnd + 1).trim()
+                }
+                if (code.isNotEmpty()) instructions += (index + 1) to code
+            }
+
+            val unresolvedLabels = mutableListOf<Pair<Int, String>>()
+            for ((line, code) in instructions) {
+                val splitAt = code.indexOfFirst { it.isWhitespace() }
+                val opcode = if (splitAt < 0) code else code.substring(0, splitAt)
+                val tail = if (splitAt < 0) "" else code.substring(splitAt).trim()
+                val args = if (tail.isEmpty()) emptyList() else tail.split(',', limit = Int.MAX_VALUE).map { it.trim() }
+                val expected = operandCounts[opcode]
+                if (expected == null) {
+                    issues += ValidationIssue(line, "Unknown opcode '$opcode': this instruction is invalid or not implemented.")
+                    continue
+                }
+                if (args.size != expected) {
+                    issues += ValidationIssue(line, "Opcode $opcode requires exactly $expected operand(s), but ${args.size} were supplied.")
+                }
+                if (opcode in jumpInstructions) {
+                    val target = args.firstOrNull().orEmpty()
+                    if (target.isNotEmpty()) {
+                        if (!labelPattern.matches(target)) issues += ValidationIssue(line, "Invalid jump target '$target': a jump must reference a label.")
+                        else unresolvedLabels += line to target
+                    }
+                    args.drop(1).forEachIndexed { index, operand ->
+                        if (operand.isNotEmpty() && !isValidOperand(operand)) issues += ValidationIssue(line, "Operand ${index + 2} '$operand' is not a valid register, immediate value, or memory reference.")
+                    }
+                } else {
+                    args.forEachIndexed { index, operand ->
+                        if (operand.isNotEmpty() && !isValidOperand(operand)) {
+                            issues += ValidationIssue(line, "Operand ${index + 1} '$operand' is not a valid register, immediate value, or memory reference.")
+                        }
+                    }
+                }
+                if (opcode in setOf("MUL", "DIV") && args.firstOrNull()?.let(::isImmediateLiteral) == true) {
+                    issues += ValidationIssue(line, "$opcode does not accept an immediate value; use a register or memory operand.")
+                }
+                if (opcode in setOf("MOV", "XCHG", "ADD", "SUB", "AND", "OR", "XOR") && args.size >= 2 && isMemoryOperand(args[0]) && isMemoryOperand(args[1])) {
+                    issues += ValidationIssue(line, "$opcode cannot use memory for both operands; at least one operand must be a register or an immediate value.")
+                }
+                if (opcode in setOf("MOV", "XCHG", "ADD", "SUB", "AND", "OR", "XOR", "INC", "DEC", "NEG", "NOT") && args.firstOrNull()?.let(::isImmediateLiteral) == true) {
+                    issues += ValidationIssue(line, "The destination of $opcode cannot be an immediate value.")
+                }
+            }
+            unresolvedLabels.forEach { (line, target) ->
+                if (target !in labels) issues += ValidationIssue(line, "Label '$target' is not defined; add '$target:' or correct the jump target.")
+            }
+            return issues.sortedBy { it.line }
+        }
+
+        private fun isValidOperand(raw: String): Boolean {
+            val operand = raw.replace("BYTE PTR", "").replace("WORD PTR", "").trim()
+            if (operand in allRegisters || isImmediateLiteral(operand)) return true
+            if (!isMemoryOperand(operand)) return false
+            val expression = operand.substring(1, operand.length - 1).replace("-", "+-")
+            if (expression.isBlank()) return false
+            return expression.split('+').map { it.trim() }.filter { it.isNotEmpty() }.all { term ->
+                val value = term.removePrefix("-").trim()
+                value in addressRegisters || isImmediateLiteral(value)
+            }
+        }
+
+        private fun isMemoryOperand(operand: String): Boolean = operand.startsWith('[') && operand.endsWith(']')
+
+        private fun isImmediateLiteral(raw: String): Boolean {
+            val value = raw.trim().uppercase()
+            return value.matches(Regex("-?\\d+")) ||
+                value.matches(Regex("0X[0-9A-F]+")) ||
+                value.matches(Regex("[0-9A-F]+H")) ||
+                value.matches(Regex("[01]+B")) ||
+                (value.startsWith("'") && value.endsWith("'") && value.length == 3)
+        }
     }
 }

@@ -37,4 +37,16 @@ class AssemblyEngineTest {
         assertTrue(AssemblyEngine.validate("JMP MISSING").isNotEmpty())
         assertTrue(AssemblyEngine.validate("MOV AX, 7\nHLT").isEmpty())
     }
+
+    @Test fun validationCollectsAllErrorsWithLineNumbersAndReasons() {
+        val issues = AssemblyEngine.validate("MOV AX\nMVO BX, 3\nADD QZ, 1\nJMP MISSING\nMOV ZX, 99Z")
+        assertEquals(6, issues.size)
+        assertEquals(listOf(1, 2, 3, 4, 5, 5), issues.map { it.line })
+        assertTrue(issues[0].message.contains("requires exactly 2 operand(s)"))
+        assertTrue(issues[1].message.contains("Unknown opcode 'MVO'"))
+        assertTrue(issues[2].message.contains("'QZ'"))
+        assertTrue(issues[3].message.contains("Label 'MISSING' is not defined"))
+        assertTrue(issues[4].message.contains("'ZX'"))
+        assertTrue(issues[5].message.contains("'99Z'"))
+    }
 }

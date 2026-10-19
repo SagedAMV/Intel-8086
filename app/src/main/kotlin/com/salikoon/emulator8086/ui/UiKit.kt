@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.text.method.ScrollingMovementMethod
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -101,7 +102,8 @@ internal object UiKit {
 
     /** Persistent, in-layout feedback pinned below scrollable content (never a Toast/snackbar). */
     fun statusBar(activity: AppCompatActivity, parent: LinearLayout): TextView = TextView(activity).apply {
-        visibility = View.GONE; textSize = 14f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER_VERTICAL
+        visibility = View.GONE; textSize = 13f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.TOP or Gravity.START
+        maxHeight = dp(activity, 190); isVerticalScrollBarEnabled = true; movementMethod = ScrollingMovementMethod.getInstance()
         setPadding(dp(activity, 13), dp(activity, 9), dp(activity, 13), dp(activity, 9))
         parent.addView(this, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(activity, 8) })
     }
