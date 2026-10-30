@@ -204,12 +204,15 @@
     {
       "Instruction": "INT",
       "Syntax": "INT interrupt-number",
-      "Description": "Used to invoke interrupt handler identified by interrupt-number",
-      "Source": [],
-      "Destination": [],
-      "FlagsChanged": ["Interrupt","Trap"],
+      "Description": "Calls interrupt 21h, the DOS service dispatcher. Supported services: AH=1 read a character into AL, AH=2 write the character in DL, AH=9 print the '$'-terminated string at DS:DX, AH=4Ch terminate the program.",
+      "Source": ["AH (service number)"],
+      "Destination": ["AL", "Output"],
+      "FlagsChanged": [],
       "Examples": [
-        {"Type": "None","Specimen":"INT 21H"}
+        {"Type":"Read character","Specimen":"MOV AH,1 \n INT 21H"},
+        {"Type":"Write character","Specimen":"MOV AH,2 \n MOV DL,35H \n INT 21H"},
+        {"Type":"Print string","Specimen":"MOV DX,200H \n MOV AH,9 \n INT 21H"},
+        {"Type":"Exit","Specimen":"MOV AH,4CH \n INT 21H"}
       ]
     },
     {
@@ -529,6 +532,581 @@
       "Examples": [
         {"Type":"LOOPNE","Specimen":"MOV CX,5 \n SUB BX,AX \nLOOPNE CX"},
         {"Type":"LOOPNZ","Specimen":"MOV CX,5 \n SUB BX,AX \nLOOPNZ CX"}
+      ]
+    },
+    {
+      "Instruction": "PUSH",
+      "Syntax": "PUSH source",
+      "Description": "Decrements SP by 2 and stores a 16-bit value on the stack at SS:SP. Accepts a register, a memory word or an immediate value.",
+      "Source": ["Register","Memory","Immediate value"],
+      "Destination": ["Stack (SS:SP)"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Register","Specimen": "PUSH AX"},
+        {"Type": "Immediate","Specimen": "PUSH 1234H"},
+        {"Type": "Memory","Specimen": "PUSH [BX]"}
+      ]
+    },
+    {
+      "Instruction": "POP",
+      "Syntax": "POP destination",
+      "Description": "Copies the word at SS:SP into the destination and then adds 2 to SP. POP CS is not allowed on the 8086.",
+      "Source": ["Stack (SS:SP)"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Register","Specimen": "POP BX"},
+        {"Type": "Memory","Specimen": "POP [200H]"}
+      ]
+    },
+    {
+      "Instruction": "PUSHF",
+      "Syntax": "PUSHF",
+      "Description": "Pushes the flag register onto the stack.",
+      "Source": ["Flag register"],
+      "Destination": ["Stack (SS:SP)"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "PUSHF"}
+      ]
+    },
+    {
+      "Instruction": "POPF",
+      "Syntax": "POPF",
+      "Description": "Pops a word from the stack into the flag register.",
+      "Source": ["Stack (SS:SP)"],
+      "Destination": ["Flag register"],
+      "FlagsChanged": ["All flags"],
+      "Examples": [
+        {"Type": "None","Specimen": "POPF"}
+      ]
+    },
+    {
+      "Instruction": "LAHF",
+      "Syntax": "LAHF",
+      "Description": "Loads AH with the low byte of the flag register: SF ZF 0 AF 0 PF 1 CF.",
+      "Source": ["Flag register"],
+      "Destination": ["AH"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "LAHF"}
+      ]
+    },
+    {
+      "Instruction": "SAHF",
+      "Syntax": "SAHF",
+      "Description": "Stores AH into the low byte of the flag register (SF, ZF, AF, PF and CF).",
+      "Source": ["AH"],
+      "Destination": ["Flag register"],
+      "FlagsChanged": ["Sign","Zero","Auxiliary","Parity","Carry"],
+      "Examples": [
+        {"Type": "None","Specimen": "SAHF"}
+      ]
+    },
+    {
+      "Instruction": "LEA",
+      "Syntax": "LEA destination,source",
+      "Description": "Loads the effective address (the offset) of a memory operand into a 16-bit register instead of loading its contents.",
+      "Source": ["Memory (address only)"],
+      "Destination": ["Register"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Register","Specimen": "LEA BX,[SI+10]"},
+        {"Type": "Register","Specimen": "LEA AX,[BX+SI+2]"}
+      ]
+    },
+    {
+      "Instruction": "LDS",
+      "Syntax": "LDS destination,source",
+      "Description": "Loads a far pointer from memory: the first word goes to the register and the second word to DS.",
+      "Source": ["Memory"],
+      "Destination": ["Register","DS"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Register","Specimen": "LDS SI,[200H]"}
+      ]
+    },
+    {
+      "Instruction": "LES",
+      "Syntax": "LES destination,source",
+      "Description": "Loads a far pointer from memory: the first word goes to the register and the second word to ES.",
+      "Source": ["Memory"],
+      "Destination": ["Register","ES"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Register","Specimen": "LES DI,[200H]"}
+      ]
+    },
+    {
+      "Instruction": "IN",
+      "Syntax": "IN accumulator,port",
+      "Description": "Reads a byte into AL or a word into AX from an I/O port. The port is an 8-bit constant or the DX register.",
+      "Source": ["I/O port (immediate or DX)"],
+      "Destination": ["AL","AX"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Immediate port","Specimen": "IN AL,60H"},
+        {"Type": "DX port","Specimen": "IN AX,DX"}
+      ]
+    },
+    {
+      "Instruction": "OUT",
+      "Syntax": "OUT port,accumulator",
+      "Description": "Writes AL or AX to an I/O port.",
+      "Source": ["AL","AX"],
+      "Destination": ["I/O port"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Immediate port","Specimen": "OUT 60H,AL"},
+        {"Type": "DX port","Specimen": "OUT DX,AX"}
+      ]
+    },
+    {
+      "Instruction": "XLAT",
+      "Syntax": "XLAT",
+      "Description": "Table look-up: AL = [BX + AL]. Used to translate a code through a byte table.",
+      "Source": ["BX","AL"],
+      "Destination": ["AL"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "XLAT"}
+      ]
+    },
+    {
+      "Instruction": "ADC",
+      "Syntax": "ADC destination,source",
+      "Description": "Adds the source plus the carry flag to the destination. Used to chain additions wider than 16 bits.",
+      "Source": ["Register","Memory","Immediate value"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Parity","Zero","Sign"],
+      "Examples": [
+        {"Type": "Register-Register","Specimen": "ADC AX,BX"},
+        {"Type": "Register-Immediate Value","Specimen": "ADC DX,0"},
+        {"Type": "Register-Memory","Specimen": "ADC [BX],CL"}
+      ]
+    },
+    {
+      "Instruction": "SBB",
+      "Syntax": "SBB destination,source",
+      "Description": "Subtracts the source plus the borrow flag from the destination. Used to chain subtractions wider than 16 bits.",
+      "Source": ["Register","Memory","Immediate value"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Parity","Zero","Sign"],
+      "Examples": [
+        {"Type": "Register-Register","Specimen": "SBB AX,BX"},
+        {"Type": "Register-Immediate Value","Specimen": "SBB DX,0"}
+      ]
+    },
+    {
+      "Instruction": "IMUL",
+      "Syntax": "IMUL source",
+      "Description": "Signed one-operand multiply. A byte source gives AX = AL x source; a word source gives DX:AX = AX x source. Carry and Overflow are set when the upper half is significant.",
+      "Source": ["Register","Memory"],
+      "Destination": ["AX","DX"],
+      "FlagsChanged": ["Carry","Overflow"],
+      "Examples": [
+        {"Type": "Register","Specimen": "IMUL BX"},
+        {"Type": "Memory","Specimen": "IMUL [200H]"}
+      ]
+    },
+    {
+      "Instruction": "IDIV",
+      "Syntax": "IDIV source",
+      "Description": "Signed divide. A byte source divides AX and leaves the quotient in AL and the remainder in AH; a word source divides DX:AX and leaves AX and DX. Use CWD before dividing words.",
+      "Source": ["Register","Memory"],
+      "Destination": ["AX","DX"],
+      "FlagsChanged": ["All flags are undefined"],
+      "Examples": [
+        {"Type": "Register","Specimen": "IDIV BX"},
+        {"Type": "Byte","Specimen": "IDIV BL"}
+      ]
+    },
+    {
+      "Instruction": "CBW",
+      "Syntax": "CBW",
+      "Description": "Converts the signed byte in AL to the signed word in AX by copying the sign bit into AH.",
+      "Source": ["AL"],
+      "Destination": ["AX"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "CBW"}
+      ]
+    },
+    {
+      "Instruction": "CWD",
+      "Syntax": "CWD",
+      "Description": "Converts the signed word in AX to the double word DX:AX by filling DX with the sign of AX.",
+      "Source": ["AX"],
+      "Destination": ["DX"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "CWD"}
+      ]
+    },
+    {
+      "Instruction": "AAA",
+      "Syntax": "AAA",
+      "Description": "ASCII adjust after addition: fixes up AL and AH so the result is two unpacked decimal digits.",
+      "Source": ["AL","AH"],
+      "Destination": ["AL","AH"],
+      "FlagsChanged": ["Auxiliary","Carry"],
+      "Examples": [
+        {"Type": "None","Specimen": "ADD AL,BL \\n AAA"}
+      ]
+    },
+    {
+      "Instruction": "AAS",
+      "Syntax": "AAS",
+      "Description": "ASCII adjust after subtraction for unpacked decimal digits.",
+      "Source": ["AL","AH"],
+      "Destination": ["AL","AH"],
+      "FlagsChanged": ["Auxiliary","Carry"],
+      "Examples": [
+        {"Type": "None","Specimen": "SUB AL,BL \\n AAS"}
+      ]
+    },
+    {
+      "Instruction": "AAM",
+      "Syntax": "AAM",
+      "Description": "ASCII adjust after multiplication: divides AL by the base (10 by default) so AH holds the high digit and AL the low one.",
+      "Source": ["AL"],
+      "Destination": ["AL","AH"],
+      "FlagsChanged": ["Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "None","Specimen": "AAM"},
+        {"Type": "Base 16","Specimen": "AAM 16"}
+      ]
+    },
+    {
+      "Instruction": "AAD",
+      "Syntax": "AAD",
+      "Description": "ASCII adjust before division: combines AH and AL into one binary value in AL and clears AH.",
+      "Source": ["AL","AH"],
+      "Destination": ["AL","AH"],
+      "FlagsChanged": ["Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "None","Specimen": "AAD"}
+      ]
+    },
+    {
+      "Instruction": "DAA",
+      "Syntax": "DAA",
+      "Description": "Decimal adjust after addition for packed BCD values in AL. Uses and sets AF and CF.",
+      "Source": ["AL"],
+      "Destination": ["AL"],
+      "FlagsChanged": ["Carry","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "None","Specimen": "ADD AL,BL \\n DAA"}
+      ]
+    },
+    {
+      "Instruction": "DAS",
+      "Syntax": "DAS",
+      "Description": "Decimal adjust after subtraction for packed BCD values in AL.",
+      "Source": ["AL"],
+      "Destination": ["AL"],
+      "FlagsChanged": ["Carry","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "None","Specimen": "SUB AL,BL \\n DAS"}
+      ]
+    },
+    {
+      "Instruction": "SHL / SAL",
+      "Syntax": "SHL destination,count",
+      "Description": "Shifts the operand left. The last bit shifted out goes to CF; for a count of 1 the Overflow flag is the XOR of the new sign bit and CF. The count is 1, CL or an immediate value (masked to 5 bits).",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "By one","Specimen": "SHL AX,1"},
+        {"Type": "By CL","Specimen": "SHL AX,CL"},
+        {"Type": "Immediate","Specimen": "SAL AL,3"}
+      ]
+    },
+    {
+      "Instruction": "SHR",
+      "Syntax": "SHR destination,count",
+      "Description": "Logical shift right, filling the top with zeros. CF receives the last bit shifted out.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "By one","Specimen": "SHR AX,1"},
+        {"Type": "By CL","Specimen": "SHR BL,CL"}
+      ]
+    },
+    {
+      "Instruction": "SAR",
+      "Syntax": "SAR destination,count",
+      "Description": "Arithmetic shift right: the sign bit is copied into the vacated positions, so signed values stay negative.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "By one","Specimen": "SAR AX,1"},
+        {"Type": "By CL","Specimen": "SAR BL,CL"}
+      ]
+    },
+    {
+      "Instruction": "ROL",
+      "Syntax": "ROL destination,count",
+      "Description": "Rotates the operand left; the bit leaving the top re-enters at the bottom and is copied to CF. Only CF and OF change.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow"],
+      "Examples": [
+        {"Type": "By one","Specimen": "ROL AL,1"},
+        {"Type": "By CL","Specimen": "ROL AX,CL"}
+      ]
+    },
+    {
+      "Instruction": "ROR",
+      "Syntax": "ROR destination,count",
+      "Description": "Rotates the operand right; the bit leaving the bottom re-enters at the top and is copied to CF.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow"],
+      "Examples": [
+        {"Type": "By one","Specimen": "ROR AL,1"},
+        {"Type": "By CL","Specimen": "ROR AX,CL"}
+      ]
+    },
+    {
+      "Instruction": "RCL",
+      "Syntax": "RCL destination,count",
+      "Description": "Rotates the operand left through the carry flag: the old sign bit becomes the new CF.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow"],
+      "Examples": [
+        {"Type": "By one","Specimen": "RCL AL,1"},
+        {"Type": "By CL","Specimen": "RCL AX,CL"}
+      ]
+    },
+    {
+      "Instruction": "RCR",
+      "Syntax": "RCR destination,count",
+      "Description": "Rotates the operand right through the carry flag: the old lowest bit becomes the new CF.",
+      "Source": ["Register","Memory"],
+      "Destination": ["Register","Memory"],
+      "FlagsChanged": ["Carry","Overflow"],
+      "Examples": [
+        {"Type": "By one","Specimen": "RCR AL,1"},
+        {"Type": "By CL","Specimen": "RCR AX,CL"}
+      ]
+    },
+    {
+      "Instruction": "MOVSB",
+      "Syntax": "MOVSB",
+      "Description": "Copies the byte at DS:SI to ES:DI and then moves SI and DI forward (backward when DF = 1). Use with REP to copy CX bytes.",
+      "Source": ["DS:SI"],
+      "Destination": ["ES:DI"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Single","Specimen": "MOVSB"},
+        {"Type": "Block","Specimen": "REP MOVSB"}
+      ]
+    },
+    {
+      "Instruction": "MOVSW",
+      "Syntax": "MOVSW",
+      "Description": "Copies the word at DS:SI to ES:DI and advances both pointers by 2.",
+      "Source": ["DS:SI"],
+      "Destination": ["ES:DI"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Block","Specimen": "REP MOVSW"}
+      ]
+    },
+    {
+      "Instruction": "CMPSB",
+      "Syntax": "CMPSB",
+      "Description": "Compares the byte at DS:SI with the byte at ES:DI by subtracting them; only the flags are kept.",
+      "Source": ["DS:SI","ES:DI"],
+      "Destination": [],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "Single","Specimen": "CMPSB"},
+        {"Type": "With prefix","Specimen": "REPE CMPSB"}
+      ]
+    },
+    {
+      "Instruction": "CMPSW",
+      "Syntax": "CMPSW",
+      "Description": "Compares two words (DS:SI against ES:DI) and advances both pointers by 2.",
+      "Source": ["DS:SI","ES:DI"],
+      "Destination": [],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "Single","Specimen": "CMPSW"}
+      ]
+    },
+    {
+      "Instruction": "SCASB",
+      "Syntax": "SCASB",
+      "Description": "Scans a string: subtracts the byte at ES:DI from AL and advances DI. Pair with REPNE to search for a character.",
+      "Source": ["AL","ES:DI"],
+      "Destination": [],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "Search","Specimen": "REPNE SCASB"}
+      ]
+    },
+    {
+      "Instruction": "SCASW",
+      "Syntax": "SCASW",
+      "Description": "Scans a string comparing AX with the word at ES:DI and advances DI by 2.",
+      "Source": ["AX","ES:DI"],
+      "Destination": [],
+      "FlagsChanged": ["Carry","Overflow","Auxiliary","Zero","Sign","Parity"],
+      "Examples": [
+        {"Type": "Single","Specimen": "SCASW"}
+      ]
+    },
+    {
+      "Instruction": "LODSB",
+      "Syntax": "LODSB",
+      "Description": "Loads the byte at DS:SI into AL and advances SI.",
+      "Source": ["DS:SI"],
+      "Destination": ["AL"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Single","Specimen": "LODSB"}
+      ]
+    },
+    {
+      "Instruction": "LODSW",
+      "Syntax": "LODSW",
+      "Description": "Loads the word at DS:SI into AX and advances SI by 2.",
+      "Source": ["DS:SI"],
+      "Destination": ["AX"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Single","Specimen": "LODSW"}
+      ]
+    },
+    {
+      "Instruction": "STOSB",
+      "Syntax": "STOSB",
+      "Description": "Stores AL at ES:DI and advances DI. Combine with REP to fill a block.",
+      "Source": ["AL"],
+      "Destination": ["ES:DI"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Fill","Specimen": "REP STOSB"}
+      ]
+    },
+    {
+      "Instruction": "STOSW",
+      "Syntax": "STOSW",
+      "Description": "Stores AX at ES:DI and advances DI by 2.",
+      "Source": ["AX"],
+      "Destination": ["ES:DI"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Fill","Specimen": "REP STOSW"}
+      ]
+    },
+    {
+      "Instruction": "REP / REPE / REPNE",
+      "Syntax": "REP instruction",
+      "Description": "Repeats the following string instruction. REP repeats CX times; REPE (REPZ) stops when ZF becomes 0; REPNE (REPNZ) stops when ZF becomes 1.",
+      "Source": ["CX","ZF"],
+      "Destination": ["CX","SI","DI"],
+      "FlagsChanged": ["Zero (conditional forms)"],
+      "Examples": [
+        {"Type": "Block move","Specimen": "REP MOVSB"},
+        {"Type": "Compare","Specimen": "REPE CMPSB"},
+        {"Type": "Search","Specimen": "REPNE SCASB"}
+      ]
+    },
+    {
+      "Instruction": "CALL",
+      "Syntax": "CALL label",
+      "Description": "Calls a procedure: pushes the address of the next instruction on the stack and jumps to the label. Pair it with RET.",
+      "Source": ["Label"],
+      "Destination": ["Stack","IP"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Call","Specimen": "CALL MULTIPLY"}
+      ]
+    },
+    {
+      "Instruction": "RET / RETN / RETF",
+      "Syntax": "RET [words]",
+      "Description": "Returns from a procedure: pops the return address into IP. RETF also pops CS; the optional operand releases further stack words.",
+      "Source": ["Stack"],
+      "Destination": ["IP"],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Near return","Specimen": "RET"},
+        {"Type": "Release 4 bytes","Specimen": "RET 4"}
+      ]
+    },
+    {
+      "Instruction": "IRET",
+      "Syntax": "IRET",
+      "Description": "Returns from an interrupt: pops IP, CS and the flag register.",
+      "Source": ["Stack"],
+      "Destination": ["IP","CS","Flag register"],
+      "FlagsChanged": ["All flags"],
+      "Examples": [
+        {"Type": "Return","Specimen": "IRET"}
+      ]
+    },
+    {
+      "Instruction": "INTO",
+      "Syntax": "INTO",
+      "Description": "Generates interrupt 4 when OF = 1, otherwise does nothing. Used to trap signed overflow.",
+      "Source": ["Overflow flag"],
+      "Destination": [],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Trap overflow","Specimen": "INTO"}
+      ]
+    },
+    {
+      "Instruction": "STI",
+      "Syntax": "STI",
+      "Description": "Sets the interrupt flag IF = 1.",
+      "Source": [],
+      "Destination": ["IF"],
+      "FlagsChanged": ["Interrupt"],
+      "Examples": [
+        {"Type": "Enable","Specimen": "STI"}
+      ]
+    },
+    {
+      "Instruction": "WAIT",
+      "Syntax": "WAIT",
+      "Description": "Waits for the coprocessor BUSY line. With no 8087 present it behaves like a NOP.",
+      "Source": [],
+      "Destination": [],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "None","Specimen": "WAIT"}
+      ]
+    },
+    {
+      "Instruction": "LOCK",
+      "Syntax": "LOCK instruction",
+      "Description": "Prefix that asserts the bus lock for the following instruction. On a single processor it changes nothing.",
+      "Source": [],
+      "Destination": [],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Prefix","Specimen": "LOCK NOP"}
+      ]
+    },
+    {
+      "Instruction": "ESC",
+      "Syntax": "ESC opcode,source",
+      "Description": "Coprocessor escape: hands the instruction to an 8087. With no coprocessor it behaves like a NOP.",
+      "Source": ["Immediate value","Memory"],
+      "Destination": [],
+      "FlagsChanged": ["No flags affected"],
+      "Examples": [
+        {"Type": "Escape","Specimen": "ESC 6,[BX]"}
       ]
     }
   ]

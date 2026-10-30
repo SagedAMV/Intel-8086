@@ -27,6 +27,22 @@
     {
       "Title": "Flag Instructions Demo",
       "Description": "STC\nCLC\nCMC\nCLI\nSTD\nCLD\nHLT"
+    },
+    {
+      "Title": "String Copy (REP MOVSB)",
+      "Description": "MOV BYTE PTR [200H],48H ; 'H'\nMOV BYTE PTR [201H],49H ; 'I'\nMOV BYTE PTR [202H],21H ; '!'\nMOV SI,200H ; source\nMOV DI,300H ; destination\nMOV CX,3 ; byte count\nCLD ; forward direction\nREP MOVSB ; copy CX bytes\nHLT"
+    },
+    {
+      "Title": "Subroutine & Stack (CALL/RET)",
+      "Description": "MOV AX,6\nCALL SQUARE ; AX = AX*AX\nHLT\nSQUARE: PUSH BX ; save BX\nMUL AX ; DX:AX = AX*AX\nPOP BX ; restore BX\nRET ; return to caller"
+    },
+    {
+      "Title": "BCD Addition (DAA)",
+      "Description": "MOV AL,47H ; packed BCD 47\nMOV BL,38H ; packed BCD 38\nADD AL,BL ; 47+38 = 7FH\nDAA ; adjust to BCD 85\nHLT"
+    },
+    {
+      "Title": "Bit Rotation & Shifts",
+      "Description": "MOV AL,81H\nSHR AL,1 ; logical shift -> 40H, CF=1\nMOV BL,81H\nSAR BL,1 ; arithmetic shift -> C0H\nMOV CL,4\nROL AL,CL ; rotate by CL\nRCR AL,1 ; rotate through carry\nHLT"
     }
   ]
 }

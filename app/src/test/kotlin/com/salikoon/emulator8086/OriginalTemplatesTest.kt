@@ -79,7 +79,44 @@ CLI
 STD
 CLD
 HLT
-"""
+""",
+        "String Copy (REP MOVSB)" to """
+MOV BYTE PTR [200H],48H ; 'H'
+MOV BYTE PTR [201H],49H ; 'I'
+MOV BYTE PTR [202H],21H ; '!'
+MOV SI,200H ; source
+MOV DI,300H ; destination
+MOV CX,3 ; byte count
+CLD ; forward direction
+REP MOVSB ; copy CX bytes
+HLT
+""",
+        "Subroutine & Stack (CALL/RET)" to """
+MOV AX,6
+CALL SQUARE ; AX = AX*AX
+HLT
+SQUARE: PUSH BX ; save BX
+MUL AX ; DX:AX = AX*AX
+POP BX ; restore BX
+RET ; return to caller
+""",
+        "BCD Addition (DAA)" to """
+MOV AL,47H ; packed BCD 47
+MOV BL,38H ; packed BCD 38
+ADD AL,BL ; 47+38 = 7FH
+DAA ; adjust to BCD 85
+HLT
+""",
+        "Bit Rotation & Shifts" to """
+MOV AL,81H
+SHR AL,1 ; logical shift -> 40H, CF=1
+MOV BL,81H
+SAR BL,1 ; arithmetic shift -> C0H
+MOV CL,4
+ROL AL,CL ; rotate by CL
+RCR AL,1 ; rotate through carry
+HLT
+""",
         )
         examples.forEach { (name, code) ->
             try { AssemblyEngine(code).run(3_000) }

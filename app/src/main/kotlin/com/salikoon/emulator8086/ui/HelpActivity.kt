@@ -13,7 +13,7 @@ class HelpActivity : AppCompatActivity() {
         body.addView(UiKit.sectionLabel(this, "QUICK REFERENCE"))
         body.addView(UiKit.text(this, "The instruction field guide", 21, UiKit.INK, true))
         body.addView(UiKit.text(this, "Tap an instruction for syntax and examples. Use one instruction per line, end labels with a colon, and start comments with a semicolon.", 14, UiKit.MUTED))
-        body.addView(UiKit.text(this, "Registers: AX, BX, CX, DX, SI, DI, BP, SP. Byte aliases: AH/AL, BH/BL, CH/CL, DH/DL. Numbers may be decimal, binary (…B), or hexadecimal (…H / 0x…).", 13, UiKit.INK).apply {
+        body.addView(UiKit.text(this, "Registers: AX, BX, CX, DX, SI, DI, BP, SP and the segment registers CS, DS, ES, SS. Byte aliases: AH/AL, BH/BL, CH/CL, DH/DL. Numbers may be decimal, binary (…B), or hexadecimal (…H / 0x…). String instructions take no operands: set SI, DI and CX first.", 13, UiKit.INK).apply {
             setPadding(UiKit.dp(this@HelpActivity, 14), UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 14), UiKit.dp(this@HelpActivity, 12))
             background = UiKit.surface(this@HelpActivity)
         })
@@ -29,7 +29,7 @@ class HelpActivity : AppCompatActivity() {
                 UiKit.card(this, body, name, syntax) { showDetails(item) }
             }
         } catch (e: Exception) { loadError = "Instruction reference unavailable: ${e.message ?: "unknown error"}" }
-        body.addView(UiKit.text(this, "Runtime support includes data transfer, arithmetic and bitwise instructions, conditional jumps, LOOP, flag control, NOP, HLT, and DOS INT 21h character I/O. Unsupported directives are not assembled.", 13, UiKit.MUTED).apply {
+        body.addView(UiKit.text(this, "The emulator implements the full Intel 8086/8088 instruction set: data transfer and stack, arithmetic (including signed and BCD), logic, shifts and rotates, string instructions with REP/REPE/REPNE, all conditional jumps and loops, CALL/RET/IRET, flag control, IN/OUT ports, and DOS INT 21h services AH=1, 2, 9 and 4Ch. Assembler directives are not assembled.", 13, UiKit.MUTED).apply {
             setPadding(UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 10), UiKit.dp(this@HelpActivity, 12), UiKit.dp(this@HelpActivity, 10))
             background = UiKit.surface(this@HelpActivity)
         })
