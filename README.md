@@ -32,8 +32,13 @@ Notes on the model:
 - `IN`/`OUT` use a small port space that starts at zero; `WAIT`, `LOCK` and `ESC` behave as no-ops (there is no 8087).
 - A `REP` prefix completes all its iterations inside a single `step()` call, because on real hardware `REP` is part
   of one instruction.
-- Labels, `;` comments, decimal, `...H`/`0x...` hexadecimal, `...B` binary literals and character literals such as
-  `'A'` are accepted. Assembler directives (`DB`, `DW`, `ORG`, `EQU`, `SEGMENT`) are not assembled.
+- Labels, `;` comments, decimal (also with the MASM `...D` suffix), `...H`/`0x...` hexadecimal, `...B` binary
+  literals and character literals such as `'A'` or `','` are accepted. Assembler directives (`DB`, `DW`, `ORG`,
+  `EQU`, `SEGMENT`) are not assembled.
+- `PUSH SP` stores the already decremented `SP` (the 8086 quirk; the 80286 changed it), `PUSHF` sets the reserved
+  high bits, `CS` and `IP` cannot be written directly, and immediates are truncated to the operand width.
+- Every malformed program stops with a message that names the offending token (`Invalid number 'FOO'`) instead of a
+  runtime exception; the validator reports the same problems before the program is ever run.
 
 ## Build
 Requirements: JDK 17, Android SDK Platform 35, and Android Build Tools 35.0.1.

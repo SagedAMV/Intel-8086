@@ -121,6 +121,10 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         fun need(count: Int) { require(args.size == count) { "$op expects $count operand(s)" } }
         fun needOneOrTwo() { require(args.size in 1..2) { "$op expects 1 or 2 operand(s)" } }
 
+        require(args.none { it.isEmpty() }) { "Empty operand in '$op'" }
+        require(!(op in memoryPairForbidden && args.size == 2 && isMemoryOperand(args[0]) && isMemoryOperand(args[1]))) {
+            "$op cannot use memory for both operands; the 8086 cannot encode it"
+        }
         if (prefix != null && prefix != "LOCK" && op !in stringInstructions) {
             error("$prefix prefix is only valid with a string instruction")
         }
@@ -145,7 +149,9 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             }
             "PUSH" -> {
                 need(1); require(widthOf(args[0]) == 16 || isImmediate(args[0])) { "PUSH requires a 16-bit operand" }
-                pushWord(read(args[0], 16))
+                // the 8086 pushes the already decremented SP (the 80286 and later push the original value)
+                val value = if (normalize(args[0]) == "SP") (read("SP") - 2) and 0xFFFF else read(args[0], 16)
+                pushWord(value)
             }
             "POP" -> {
                 need(1)
@@ -310,7 +316,10 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 val count = when {
                     args.size == 1 -> 1
                     normalize(args[1]) == "CL" -> read("CL", 8)
-                    else -> parseNumber(args[1])
+                    else -> {
+                        require(isImmediate(args[1])) { "The shift count of $op must be 1, CL, or an immediate value" }
+                        parseNumber(args[1])
+                    }
                 }
                 require(count in 0..255) { "Shift count must be between 0 and 255" }
                 write(args[0], shiftRotate(op, value, count, width), width)
@@ -359,10 +368,15 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             "CLI" -> { need(0); flags["IF"] = 0 }
 
             // ---- interrupts --------------------------------------------------------
-            "INT" -> { need(1); executeInterrupt(read(args[0], 8)) }
+            "INT" -> {
+                need(1)
+                require(isImmediate(args[0])) { "INT requires an immediate interrupt vector" }
+                executeInterrupt(parseNumber(args[0]) and 0xFF)
+            }
 
             else -> error("Unsupported instruction: $op")
         }
+        registers["IP"] = next and 0xFFFF
         if (!done) {
             cursor = next
             if (cursor !in lines.indices) { done = true; currentLine = (lines.lastOrNull()?.sourceLine ?: 0) + 1 }
@@ -418,7 +432,10 @@ class AssemblyEngine(val source: String, private val input: String = "") {
 
     private fun executeDecimalAdjust(op: String, args: List<String>) {
         require(args.size <= 1) { "$op expects at most 1 operand" }
-        val base = args.firstOrNull()?.let(::parseNumber) ?: 10
+        val base = args.firstOrNull()?.let {
+            require(isImmediate(it)) { "$op base must be an immediate value" }
+            parseNumber(it)
+        } ?: 10
         require(base in 2..255) { "$op base must be between 2 and 255" }
         val al = read("AL", 8); val ah = read("AH", 8)
         when (op) {
@@ -445,22 +462,20 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 setSZP(value, 8)
             }
             "DAA" -> {
+                // Intel: adjust the low digit first, then the high digit; CF depends only on the old AL/CF
                 val oldAL = al; val oldCF = flags["CF"] ?: 0
-                var result = al; var cf = 0
-                var af = 0
-                if (((al and 0x0F) > 9) || flags["AF"] == 1) { result += 6; af = 1 }
-                if (result > 0xFF || oldAL > 0x99 || oldCF == 1) { result += 0x60; cf = 1 }
+                var result = al
+                if (((al and 0x0F) > 9) || flags["AF"] == 1) { result += 6; flags["AF"] = 1 } else flags["AF"] = 0
+                if (oldAL > 0x99 || oldCF == 1) { result += 0x60; flags["CF"] = 1 } else flags["CF"] = 0
                 write("AL", result and 0xFF, 8)
-                flags["AF"] = af; flags["CF"] = cf
                 setSZP(result and 0xFF, 8)
             }
             "DAS" -> {
                 val oldAL = al; val oldCF = flags["CF"] ?: 0
-                var result = al; var cf = 0; var af = 0
-                if (((al and 0x0F) > 9) || flags["AF"] == 1) { result -= 6; af = 1 }
-                if (result < 0 || oldAL > 0x99 || oldCF == 1) { result -= 0x60; cf = 1 }
+                var result = al
+                if (((al and 0x0F) > 9) || flags["AF"] == 1) { result -= 6; flags["AF"] = 1 } else flags["AF"] = 0
+                if (oldAL > 0x99 || oldCF == 1) { result -= 0x60; flags["CF"] = 1 } else flags["CF"] = 0
                 write("AL", result and 0xFF, 8)
-                flags["AF"] = af; flags["CF"] = cf
                 setSZP(result and 0xFF, 8)
             }
         }
@@ -656,7 +671,8 @@ class AssemblyEngine(val source: String, private val input: String = "") {
     private fun packFlags(): Int =
         (flags["CF"] ?: 0) or ((flags["PF"] ?: 0) shl 2) or ((flags["AF"] ?: 0) shl 4) or
             ((flags["ZF"] ?: 0) shl 6) or ((flags["SF"] ?: 0) shl 7) or ((flags["TF"] ?: 0) shl 8) or
-            ((flags["IF"] ?: 0) shl 9) or ((flags["DF"] ?: 0) shl 10) or ((flags["OF"] ?: 0) shl 11) or 0x0002
+            ((flags["IF"] ?: 0) shl 9) or ((flags["DF"] ?: 0) shl 10) or ((flags["OF"] ?: 0) shl 11) or 0xF002
+        // bits 12-15 read as ones on the 8086, bit 1 is always one
 
     private fun unpackFlags(word: Int) {
         flags["CF"] = word and 1
@@ -702,11 +718,14 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             val address = addressOf(operand)
             return if (width == 8) readByteAt(address) else readWordAt(address)
         }
-        return parseNumber(operand)
+        return parseNumber(operand) and mask(width)
     }
 
     private fun write(raw: String, value: Int, width: Int = widthOf(raw)) {
         val operand = stripSegment(normalize(raw))
+        require(operand != "CS" && operand != "IP") {
+            "$operand cannot be written directly on the 8086; only CALL/RET/IRET change the instruction pointer"
+        }
         if (operand in registers) { registers[operand] = value and 0xFFFF; return }
         byteAliases[operand]?.let { alias ->
             val old = registers.getValue(alias.first)
@@ -760,16 +779,24 @@ class AssemblyEngine(val source: String, private val input: String = "") {
 
     private fun parseNumber(token: String): Int {
         val t = token.trim().uppercase()
+        require(t.isNotEmpty()) { "Missing number" }
         if (t.startsWith("'") && t.endsWith("'") && t.length >= 3) return t[1].code
+        fun digits(text: String, radix: Int): Int = try {
+            text.toInt(radix)
+        } catch (e: NumberFormatException) {
+            throw IllegalArgumentException("Invalid number '$token'")
+        }
         return when {
-            t.startsWith("0X") -> t.substring(2).toInt(16)
-            t.endsWith("H") -> t.dropLast(1).toInt(16)
-            t.endsWith("B") && t.dropLast(1).all { it == '0' || it == '1' } -> t.dropLast(1).toInt(2)
-            else -> t.toInt()
+            t.startsWith("0X") && t.length > 2 -> digits(t.substring(2), 16)
+            t.endsWith("H") && t.length > 1 -> digits(t.dropLast(1), 16)
+            t.endsWith("B") && t.length > 1 && t.dropLast(1).all { it == '0' || it == '1' } -> digits(t.dropLast(1), 2)
+            t.endsWith("D") && t.length > 1 && t.dropLast(1).all { it.isDigit() } -> digits(t.dropLast(1), 10)
+            t.matches(Regex("-?\\d+")) -> t.toInt()
+            else -> throw IllegalArgumentException("Invalid number '$token'")
         }
     }
 
-    private fun operands(text: String): List<String> = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    private fun operands(text: String): List<String> = operandsOf(text)
 
     private fun isMemoryOperand(operand: String): Boolean {
         val value = stripSegment(normalize(operand))
@@ -783,6 +810,23 @@ class AssemblyEngine(val source: String, private val input: String = "") {
 
     companion object {
         private val WHITESPACE = Regex("\\s+")
+
+        /** Splits an operand list on commas, ignoring commas inside character literals such as ','. */
+        private fun operandsOf(text: String): List<String> {
+            if (text.isBlank()) return emptyList()
+            val parts = mutableListOf<String>()
+            val current = StringBuilder()
+            var quoted = false
+            text.forEach { ch ->
+                when {
+                    ch == '\'' -> { quoted = !quoted; current.append(ch) }
+                    ch == ',' && !quoted -> { parts += current.toString().trim(); current.clear() }
+                    else -> current.append(ch)
+                }
+            }
+            parts += current.toString().trim()
+            return parts
+        }
         private val labelAtStart = Regex("^([A-Z_.$?][A-Z0-9_.$?]*)\\s*:")
         private val labelPattern = Regex("[A-Z_.$?][A-Z0-9_.$?]*")
         private val SEGMENT_PREFIX = Regex("^(CS|DS|ES|SS)\\s*:")
@@ -796,10 +840,8 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         )
         private val addressRegisters = setOf("BX", "BP", "SI", "DI")
         private val allRegisters = setOf("AX", "BX", "CX", "DX", "SI", "DI", "BP", "SP", "CS", "DS", "ES", "SS", "IP") + byteRegisters
-        private val segmentRegisters = setOf("CS", "DS", "ES", "SS")
 
         private val prefixInstructions = setOf("REP", "REPE", "REPZ", "REPNE", "REPNZ", "LOCK")
-        private val repeatPrefixes = setOf("REP", "REPE", "REPZ", "REPNE", "REPNZ")
         private val stringInstructions = setOf(
             "MOVSB", "MOVSW", "CMPSB", "CMPSW", "SCASB", "SCASW", "LODSB", "LODSW", "STOSB", "STOSW"
         )
@@ -837,16 +879,20 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             putAll(variableOperand)
         }
 
-        private val jumpTargets = labelTargetInstructions
         private val supportedInstructions = operandCounts.keys
 
         private val immediateDestination = setOf(
-            "MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "AND", "OR", "XOR",
+            "MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "AND", "OR", "XOR", "CMP", "TEST",
             "INC", "DEC", "NEG", "NOT", "SHL", "SAL", "SHR", "SAR", "ROL", "ROR", "RCL", "RCR",
             "POP", "LEA", "LDS", "LES"
         )
         private val memoryPairForbidden = setOf("MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "AND", "OR", "XOR", "CMP", "TEST")
         private val memoryOnlySource = setOf("LEA", "LDS", "LES")
+        private val csDestinationForbidden = setOf(
+            "MOV", "ADD", "ADC", "SUB", "SBB", "AND", "OR", "XOR", "CMP", "TEST", "INC", "DEC", "NEG", "NOT",
+            "SHL", "SAL", "SHR", "SAR", "ROL", "ROR", "RCL", "RCR", "LEA", "LDS", "LES"
+        )
+        private val unwritableRegisters = setOf("CS", "IP")
         private val registerOnlySource = setOf("MUL", "DIV", "IMUL", "IDIV")
 
         fun validate(source: String): List<ValidationIssue> {
@@ -892,7 +938,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 val splitAt = code.indexOfFirst { it.isWhitespace() }
                 val opcode = if (splitAt < 0) code else code.substring(0, splitAt)
                 val tail = if (splitAt < 0) "" else code.substring(splitAt).trim()
-                val args = if (tail.isEmpty()) emptyList() else tail.split(',').map { it.trim() }
+                val args = operandsOf(tail)
                 if (prefix != null) prefixes[index + 1] = prefix
                 instructions += Triple(index + 1, opcode, args)
             }
@@ -917,7 +963,10 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (prefix != null && opcode !in stringInstructions && prefix != "LOCK") {
                     issues += ValidationIssue(line, "Prefix $prefix is only valid with a string instruction (MOVS/CMPS/SCAS/LODS/STOS).")
                 }
-                if (opcode in jumpTargets) {
+                if (args.any { it.isEmpty() }) {
+                    issues += ValidationIssue(line, "Empty operand in '$opcode': remove the stray comma.")
+                }
+                if (opcode in labelTargetInstructions) {
                     val target = args.firstOrNull().orEmpty()
                     if (target.isNotEmpty()) {
                         if (!labelPattern.matches(target)) {
@@ -977,6 +1026,28 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (opcode == "POP" && args.firstOrNull()?.uppercase() == "CS") {
                     issues += ValidationIssue(line, "POP CS is not allowed on the 8086.")
                 }
+                if (opcode in csDestinationForbidden && args.firstOrNull()?.let { it.uppercase() in unwritableRegisters } == true) {
+                    issues += ValidationIssue(line, "${args[0].uppercase()} cannot be used as a destination of $opcode on the 8086.")
+                }
+                if (opcode in setOf("PUSH", "POP") && args.firstOrNull()?.uppercase()?.contains("BYTE PTR") == true) {
+                    issues += ValidationIssue(line, "$opcode needs a 16-bit operand; drop the BYTE PTR.")
+                }
+                if ((opcode == "XCHG") && args.size == 2 && args[1].uppercase() == "CS") {
+                    issues += ValidationIssue(line, "XCHG cannot exchange CS on the 8086.")
+                }
+                if (opcode in setOf("AAM", "AAD") && args.firstOrNull()?.let(::isImmediateOperand) == false) {
+                    issues += ValidationIssue(line, "$opcode accepts an immediate base only, not '${args[0]}'.")
+                }
+                if (opcode == "INT" && args.firstOrNull()?.let(::isImmediateOperand) == false) {
+                    issues += ValidationIssue(line, "INT requires an immediate interrupt vector, not '${args[0]}'.")
+                }
+                if (opcode == "ESC" && args.isNotEmpty()) {
+                    val spec = args[0].uppercase()
+                    val value = spec.toIntOrNull() ?: spec.removeSuffix("H").toIntOrNull(16)
+                    if (value == null || value !in 0..63) {
+                        issues += ValidationIssue(line, "The ESC opcode must be an immediate value between 0 and 63.")
+                    }
+                }
             }
             unresolvedLabels.forEach { (line, target) ->
                 if (target !in labels) issues += ValidationIssue(line, "Label '$target' is not defined; add '$target:' or correct the jump target.")
@@ -985,7 +1056,8 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         }
 
         private fun isValidOperand(raw: String): Boolean {
-            val operand = raw.replace("BYTE PTR", "").replace("WORD PTR", "").replace("FAR PTR", "").trim()
+            val operand = raw.replace("BYTE PTR", "").replace("WORD PTR", "").replace("FAR PTR", "")
+                .replace("NEAR PTR", "").trim()
             if (operand in allRegisters || isImmediateLiteral(operand)) return true
             val stripped = operand.replace(SEGMENT_PREFIX, "").trim()
             if (!isMemoryOperand(stripped)) return false
@@ -998,7 +1070,9 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         }
 
         private fun isMemoryOperand(operand: String): Boolean {
-            val value = operand.replace(SEGMENT_PREFIX, "").trim()
+            val value = operand
+                .replace("BYTE PTR", "").replace("WORD PTR", "").replace("FAR PTR", "").replace("NEAR PTR", "")
+                .replace(SEGMENT_PREFIX, "").trim()
             return value.startsWith('[') && value.endsWith(']')
         }
 
