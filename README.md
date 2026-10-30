@@ -40,6 +40,31 @@ Notes on the model:
 - Every malformed program stops with a message that names the offending token (`Invalid number 'FOO'`) instead of a
   runtime exception; the validator reports the same problems before the program is ever run.
 
+### What the validator checks
+
+`AssemblyEngine.validate()` runs the same rules as the engine, so a program can never execute in a state the editor
+would have refused. Each message names the token and the fix:
+
+| Rule | Example message |
+| --- | --- |
+| both operands have one width | `MOV operands must be the same size: AX is 16-bit but BL is 8-bit.` |
+| a constant fits its destination | `MOV cannot store 300 in a 8-bit operand (allowed range -128..255)` |
+| one character per literal | `Character constant 'AB' must contain exactly one character, for example 'A'.` |
+| labels are not values | `Label 'COUNT' cannot be used as a value; labels are only valid as jump and call targets.` |
+| labels do not shadow registers | `Label 'CS' has the same name as a register; choose another label name.` |
+| labels end with a colon, no space | `Labels must be written like 'START:' with no space before the colon.` |
+| the last label marks an instruction | `Label 'L1' is not followed by any instruction, so it points past the end of the program` |
+| hex constants start with a digit | `a hex constant must start with a digit, so write 0E53BH instead.` |
+| a typo gets a suggestion | `Unknown opcode 'MVO': this instruction is invalid or not implemented. Did you mean MOV?` |
+| directives are named as such | `Assembler directives are not supported: use only 8086 instructions` |
+| jumps take a label | `A jump must target a label, but 'AX' is a register.` |
+| `RET` needs its `CALL` | `RET returns to an address that was never pushed, because the program contains no CALL` |
+| `INT` only supports 21h | `Only INT 21h is supported by this emulator; 10H has no handler here.` |
+| segment registers travel only with `MOV`/`PUSH`/`POP` | `ADD cannot use the segment register DS` |
+
+Everything the runtime can object to is an `IllegalArgumentException` with the same wording, so the message in the
+editor and the message during execution never contradict each other.
+
 ## Build
 Requirements: JDK 17, Android SDK Platform 35, and Android Build Tools 35.0.1.
 
