@@ -49,6 +49,11 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         source.lines().forEachIndexed { index, raw ->
             var text = raw.substringBefore(';').trim().uppercase()
             if (text.isEmpty()) return@forEachIndexed
+            SPACED_LABEL.find(text)?.let { match ->
+                throw IllegalArgumentException(
+                    "Labels must be written like '${match.groupValues[1]}:' with no space before the colon"
+                )
+            }
             val head = text.substringBefore(' ')
             if (head.endsWith(":")) {
                 val label = head.dropLast(1)
@@ -57,6 +62,9 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             val match = labelAtStart.find(text)
             if (match != null) {
                 val label = match.groupValues[1]
+                require(label !in allRegisters) {
+                    "Label '$label' on line ${index + 1} has the same name as a register; choose another label name"
+                }
                 require(!labels.containsKey(label)) { "Duplicate label '$label' on line ${index + 1}" }
                 labels[label] = parsed.size
                 text = text.substring(match.range.last + 1).trim()
@@ -66,11 +74,30 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         }
         lines = parsed
         val unsupported = lines.firstOrNull { it.op !in supportedInstructions }
-        require(unsupported == null) { "Unsupported instruction '${unsupported?.op}' on line ${unsupported?.sourceLine}" }
+        if (unsupported != null) {
+            val hint = when {
+                unsupported.op in assemblerDirectives ->
+                    " Assembler directives are not supported: use only 8086 instructions (load values into memory with MOV)."
+                else -> closestMatch(unsupported.op, supportedInstructions)?.let { " Did you mean $it?" }.orEmpty()
+            }
+            throw IllegalArgumentException(
+                "Unknown opcode '${unsupported.op}': this instruction is invalid or not implemented.$hint"
+            )
+        }
         lines.filter { it.op in labelTargetInstructions }
             .forEach { line ->
                 val target = line.args.firstOrNull().orEmpty()
-                require(target in labels) { "Unknown label: $target" }
+                val register = normalizeRegister(target)
+                require(register == null) {
+                    "A jump must target a label, but '$target' is a register on line ${line.sourceLine}"
+                }
+                require(labelPattern.matches(target)) {
+                    "Invalid jump target '$target' on line ${line.sourceLine}: a jump must reference a label, not a number or an expression"
+                }
+                require(target in labels) {
+                    "Label '$target' is not defined; add '$target:' or correct the jump target." +
+                        closestMatch(target, labels.keys).let { if (it == null) "" else " Did you mean '$it'?" }
+                }
             }
     }
 
@@ -123,11 +150,14 @@ class AssemblyEngine(val source: String, private val input: String = "") {
 
         require(args.none { it.isEmpty() }) { "Empty operand in '$op'" }
         require(!(op in memoryPairForbidden && args.size == 2 && isMemoryOperand(args[0]) && isMemoryOperand(args[1]))) {
-            "$op cannot use memory for both operands; the 8086 cannot encode it"
+            "$op cannot use memory for both operands; at least one operand must be a register or an immediate value"
         }
         if (prefix != null && prefix != "LOCK" && op !in stringInstructions) {
-            error("$prefix prefix is only valid with a string instruction")
+            throw IllegalArgumentException(
+                "Prefix $prefix is only valid with a string instruction (MOVS/CMPS/SCAS/LODS/STOS)"
+            )
         }
+        checkOperands(op, args)
 
         when (op) {
             // ---- processor control -------------------------------------------------
@@ -333,7 +363,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             "JG", "JNLE", "JGE", "JNL", "JL", "JNGE", "JLE", "JNG", "JNZ", "JNE", "JNO", "JNP", "JPO",
             "JNS", "JO", "JP", "JPE", "JS" -> {
                 need(1)
-                if (jumpCondition(op)) next = labels[args[0]] ?: error("Unknown label ${args[0]}")
+                if (jumpCondition(op)) next = labels[args[0]] ?: throw IllegalArgumentException("Unknown label ${args[0]}")
             }
             "LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ" -> {
                 need(1)
@@ -344,7 +374,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                     "LOOPNE", "LOOPNZ" -> flags["ZF"] == 0
                     else -> true
                 }
-                if (condition) next = labels[args[0]] ?: error("Unknown label ${args[0]}")
+                if (condition) next = labels[args[0]] ?: throw IllegalArgumentException("Unknown label ${args[0]}")
             }
             "CALL" -> {
                 need(1)
@@ -356,7 +386,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 require(args.size <= 1) { "$op expects at most 1 operand" }
                 next = returnFrom(op, args.firstOrNull())
             }
-            "INTO" -> { need(0); if (flags["OF"] == 1) error("INTO: interrupt 4 has no handler in this emulator") }
+            "INTO" -> { need(0); if (flags["OF"] == 1) throw IllegalArgumentException("INTO: interrupt 4 has no handler in this emulator") }
 
             // ---- flags -------------------------------------------------------------
             "STC" -> { need(0); flags["CF"] = 1 }
@@ -374,7 +404,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 executeInterrupt(parseNumber(args[0]) and 0xFF)
             }
 
-            else -> error("Unsupported instruction: $op")
+            else -> throw IllegalArgumentException("Unsupported instruction: $op")
         }
         registers["IP"] = next and 0xFFFF
         if (!done) {
@@ -387,7 +417,10 @@ class AssemblyEngine(val source: String, private val input: String = "") {
     fun run(maxSteps: Int = 10_000): ExecutionSnapshot {
         var count = 0
         while (!done && count < maxSteps) { step(); count++ }
-        require(done) { "Execution limit ($maxSteps steps) reached; possible infinite loop" }
+        require(done) {
+            "Execution limit ($maxSteps steps) reached; possible infinite loop: check the LOOP/JMP labels " +
+                "and make sure every RET has its CALL"
+        }
         return snapshot()
     }
 
@@ -400,7 +433,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         while (read("CX") != 0) {
             stringStep(op)
             write("CX", (read("CX") - 1) and 0xFFFF, 16)
-            if (++guard > 0x10000) error("REP: iteration limit reached")
+            if (++guard > 0x10000) throw IllegalArgumentException("REP: iteration limit reached")
             when (prefix) {
                 "REP", "REPE", "REPZ" -> if (compares && flags["ZF"] == 0) break
                 "REPNE", "REPNZ" -> if (compares && flags["ZF"] == 1) break
@@ -422,7 +455,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             "LODSW" -> { write("AX", readWordAt(si), 16); advance("SI", step * 2) }
             "STOSB" -> { writeByteAt(di, read("AL", 8)); advance("DI", step) }
             "STOSW" -> { writeWordAt(di, read("AX", 16)); advance("DI", step * 2) }
-            else -> error("Not a string instruction: $op")
+            else -> throw IllegalArgumentException("Not a string instruction: $op")
         }
     }
 
@@ -573,11 +606,11 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                     if (ch == '$'.code) break
                     output.append(ch.toChar())
                     address = (address + 1) and 0xFFFF
-                    if (++guard > 0x10000) error("INT 21h AH=9: string is not terminated with '\$'")
+                    if (++guard > 0x10000) throw IllegalArgumentException("INT 21h AH=9: string is not terminated with '\$'")
                 }
             }
             0x4C -> { halted = true; done = true }
-            else -> error("INT 21h supports AH=1 (read), AH=2 (write), AH=9 (print string) and AH=4Ch (exit)")
+            else -> throw IllegalArgumentException("INT 21h supports AH=1 (read), AH=2 (write), AH=9 (print string) and AH=4Ch (exit)")
         }
     }
 
@@ -688,6 +721,61 @@ class AssemblyEngine(val source: String, private val input: String = "") {
 
     // --------------------------------------------------------------------- operands
 
+    /** Guards the same rules the validator reports, so a program can never run in a state the editor would have rejected. */
+    private fun checkOperands(op: String, args: List<String>) {
+        val firstIsTarget = op in labelTargetInstructions
+        args.forEachIndexed { index, operand ->
+            if (operand.isEmpty()) return@forEachIndexed
+            if (firstIsTarget && index == 0) {
+                require(normalizeRegister(operand) == null) {
+                    "A jump must target a label, but '$operand' is a register"
+                }
+                require(operand in labels) {
+                    if (labelPattern.matches(operand))
+                        "Label '$operand' is not defined; add '$operand:' or correct the jump target"
+                    else
+                        "Invalid jump target '$operand': a jump must reference a label, not a number or an expression"
+                }
+                return@forEachIndexed
+            }
+            syntaxProblem(operand)?.let { throw IllegalArgumentException(it.removeSuffix(".")) }
+            val register = normalizeRegister(operand)
+            if (register == null && !isMemoryOperand(operand) && parseValue(operand) == null) {
+                val hint = if (twoInstructionsHint(operand).isNotEmpty() && operand.split(WHITESPACE).any { it in supportedInstructions })
+                    " Write only one instruction per line" else ""
+                require(false) { operandProblem(operand, labels) + hint }
+            }
+            if (register != null && register in segmentRegisterNames && op !in segmentFriendly) {
+                require(false) { "$op cannot use the segment register $register; only MOV, PUSH and POP accept one" }
+            }
+        }
+        if (op in sizeChecked && args.size == 2) {
+            val left = explicitWidth(args[0])
+            val right = explicitWidth(args[1])
+            require(left == null || right == null || left == right) {
+                "$op operands must be the same size: ${args[0]} is $left-bit but ${args[1]} is $right-bit"
+            }
+        }
+        if (op in immediateRangeChecked && args.size == 2 && isImmediateLiteral(args[1].uppercase())) {
+            val width = explicitWidth(args[0]) ?: if (!isMemoryOperand(args[0])) 16 else null
+            val value = parseValue(args[1])
+            require(width == null || value == null || fits(value, width)) {
+                "$op cannot store $value in a $width-bit operand (allowed range ${rangeOf(width ?: 16)}); it would be silently truncated"
+            }
+        }
+        if (op in immediateDestination && args.isNotEmpty() && normalizeRegister(args[0]) == null &&
+            isImmediateLiteral(args[0].uppercase())
+        ) {
+            require(false) { "The destination of $op cannot be an immediate value" }
+        }
+        if (op == "INT" && args.size == 1) {
+            val vector = parseValue(args[0])
+            require(vector == null || vector == 0x21) {
+                "Only INT 21h is supported by this emulator; ${(vector ?: 0).toString(16).uppercase()}H has no handler here"
+            }
+        }
+    }
+
     private fun widthOf(a: String, b: String? = null): Int {
         if (declaresByte(a) || (b != null && declaresByte(b))) return 8
         if (declaresWord(a) || (b != null && declaresWord(b))) return 16
@@ -738,7 +826,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             if (width == 8) writeByteAt(address, value) else writeWordAt(address, value)
             return
         }
-        error("Cannot write to immediate operand '$raw'")
+        throw IllegalArgumentException(operandProblem(operand, labels) + " It cannot be a destination.")
     }
 
     private fun readByteAt(address: Int): Int = memory[address and 0xFFFF] ?: 0
@@ -828,6 +916,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             return parts
         }
         private val labelAtStart = Regex("^([A-Z_.$?][A-Z0-9_.$?]*)\\s*:")
+        private val SPACED_LABEL = Regex("^([A-Z_.$?][A-Z0-9_.$?]*)\\s+:")
         private val labelPattern = Regex("[A-Z_.$?][A-Z0-9_.$?]*")
         private val SEGMENT_PREFIX = Regex("^(CS|DS|ES|SS)\\s*:")
 
@@ -860,10 +949,11 @@ class AssemblyEngine(val source: String, private val input: String = "") {
         ) + stringInstructions
         private val oneOperand = setOf(
             "INC", "DEC", "NEG", "NOT", "MUL", "DIV", "IMUL", "IDIV", "INT",
-            "PUSH", "POP", "LEA", "LDS", "LES", "CALL"
+            "PUSH", "POP", "CALL"
         ) + jumpInstructions
         private val twoOperand = setOf(
-            "MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "CMP", "AND", "OR", "XOR", "TEST", "IN", "OUT"
+            "MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "CMP", "AND", "OR", "XOR", "TEST", "IN", "OUT",
+            "LEA", "LDS", "LES"
         )
         private val variableOperand = mapOf(
             "SHL" to (1..2), "SAL" to (1..2), "SHR" to (1..2), "SAR" to (1..2),
@@ -893,6 +983,14 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             "SHL", "SAL", "SHR", "SAR", "ROL", "ROR", "RCL", "RCR", "LEA", "LDS", "LES"
         )
         private val unwritableRegisters = setOf("CS", "IP")
+        private val segmentRegisterNames = setOf("CS", "DS", "ES", "SS")
+        private val segmentFriendly = setOf("MOV", "PUSH", "POP")
+        private val assemblerDirectives = setOf(
+            "DB", "DW", "DD", "DQ", "DT", "ORG", "EQU", "SEGMENT", "ENDS", "ASSUME", "PROC", "ENDP",
+            "END", "MODEL", "TITLE", "PUBLIC", "EXTRN", "INCLUDE", "MACRO", "BYTE", "WORD", "DUP"
+        )
+        private val sizeChecked = setOf("MOV", "XCHG", "ADD", "ADC", "SUB", "SBB", "CMP", "AND", "OR", "XOR", "TEST")
+        private val immediateRangeChecked = sizeChecked
         private val registerOnlySource = setOf("MUL", "DIV", "IMUL", "IDIV")
 
         fun validate(source: String): List<ValidationIssue> {
@@ -900,30 +998,54 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             val labels = linkedMapOf<String, Int>()
             val instructions = mutableListOf<Triple<Int, String, List<String>>>()
             val prefixes = mutableMapOf<Int, String>()
+            val emptyLabelBodies = mutableListOf<Pair<Int, String>>()
+            var lastContentLine = 0
 
             source.lineSequence().forEachIndexed { index, raw ->
+                val line = index + 1
                 var code = raw.substringBefore(';').trim().uppercase()
                 if (code.isEmpty()) return@forEachIndexed
+                lastContentLine = line
+
+                SPACED_LABEL.find(code)?.let { match ->
+                    val label = match.groupValues[1]
+                    issues += ValidationIssue(line, "Labels must be written like '$label:' with no space before the colon.")
+                    if (label in allRegisters) {
+                        issues += ValidationIssue(line, "Label '$label' has the same name as a register; choose another label name.")
+                    } else if (labels.containsKey(label)) {
+                        issues += ValidationIssue(line, "Duplicate label '$label'; it was already declared on line ${labels.getValue(label)}.")
+                    } else {
+                        labels[label] = line
+                    }
+                    code = code.substring(match.range.last + 1).trim()
+                    if (code.isEmpty()) { emptyLabelBodies += line to label; return@forEachIndexed }
+                }
+
                 val head = code.split(WHITESPACE, limit = 2)
-                var first = head[0]
+                val first = head[0]
                 val colon = first.indexOf(':')
                 if (colon > 0) {
                     val label = first.substring(0, colon)
                     if (!labelPattern.matches(label)) {
                         issues += ValidationIssue(
-                            index + 1,
+                            line,
                             "Invalid label '$label': labels must start with a letter or underscore and contain only letters, digits, _, ., $, or ?."
+                        )
+                    } else if (label in allRegisters) {
+                        issues += ValidationIssue(
+                            line,
+                            "Label '$label' has the same name as a register; choose another label name."
                         )
                     } else if (labels.containsKey(label)) {
                         issues += ValidationIssue(
-                            index + 1,
+                            line,
                             "Duplicate label '$label'; it was already declared on line ${labels.getValue(label)}."
                         )
                     } else {
-                        labels[label] = index + 1
+                        labels[label] = line
                     }
                     code = code.substring(colon + 1).trim()
-                    if (code.isEmpty()) return@forEachIndexed
+                    if (code.isEmpty()) { emptyLabelBodies += line to label; return@forEachIndexed }
                 }
                 var prefix: String? = null
                 val tokens = code.split(WHITESPACE, limit = 2)
@@ -931,7 +1053,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                     prefix = tokens[0]
                     code = tokens.getOrNull(1)?.trim().orEmpty()
                     if (code.isEmpty()) {
-                        issues += ValidationIssue(index + 1, "Prefix ${prefix} must be followed by an instruction.")
+                        issues += ValidationIssue(line, "Prefix $prefix must be followed by an instruction.")
                         return@forEachIndexed
                     }
                 }
@@ -939,15 +1061,20 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 val opcode = if (splitAt < 0) code else code.substring(0, splitAt)
                 val tail = if (splitAt < 0) "" else code.substring(splitAt).trim()
                 val args = operandsOf(tail)
-                if (prefix != null) prefixes[index + 1] = prefix
-                instructions += Triple(index + 1, opcode, args)
+                if (prefix != null) prefixes[line] = prefix
+                instructions += Triple(line, opcode, args)
             }
 
             val unresolvedLabels = mutableListOf<Pair<Int, String>>()
             for ((line, opcode, args) in instructions) {
                 val expected = operandCounts[opcode]
                 if (expected == null) {
-                    issues += ValidationIssue(line, "Unknown opcode '$opcode': this instruction is invalid or not implemented.")
+                    val hint = when {
+                        opcode in assemblerDirectives ->
+                            " Assembler directives are not supported: use only 8086 instructions (load values into memory with MOV)."
+                        else -> closestMatch(opcode, supportedInstructions)?.let { " Did you mean $it?" }.orEmpty()
+                    }
+                    issues += ValidationIssue(line, "Unknown opcode '$opcode': this instruction is invalid or not implemented.$hint")
                     continue
                 }
                 if (args.size !in expected) {
@@ -966,27 +1093,38 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (args.any { it.isEmpty() }) {
                     issues += ValidationIssue(line, "Empty operand in '$opcode': remove the stray comma.")
                 }
+
+                // 1. characters that cannot belong to any operand
+                args.forEach { operand ->
+                    if (operand.isEmpty()) return@forEach
+                    syntaxProblem(operand)?.let { issues += ValidationIssue(line, it) }
+                }
+
+                // 2. the target of a jump or a call is a label, never a register or a number
                 if (opcode in labelTargetInstructions) {
                     val target = args.firstOrNull().orEmpty()
                     if (target.isNotEmpty()) {
-                        if (!labelPattern.matches(target)) {
-                            issues += ValidationIssue(line, "Invalid jump target '$target': a jump must reference a label.")
-                        } else {
-                            unresolvedLabels += line to target
-                        }
-                    }
-                    args.drop(1).forEachIndexed { index, operand ->
-                        if (operand.isNotEmpty() && !isValidOperand(operand)) {
-                            issues += ValidationIssue(line, "Operand ${index + 2} '$operand' is not a valid register, immediate value, or memory reference.")
-                        }
-                    }
-                } else {
-                    args.forEachIndexed { index, operand ->
-                        if (operand.isNotEmpty() && !isValidOperand(operand)) {
-                            issues += ValidationIssue(line, "Operand ${index + 1} '$operand' is not a valid register, immediate value, or memory reference.")
+                        when {
+                            normalizeRegister(target) != null ->
+                                issues += ValidationIssue(line, "A jump must target a label, but '$target' is a register.")
+                            !labelPattern.matches(target) ->
+                                issues += ValidationIssue(line, "Invalid jump target '$target': a jump must reference a label, not a number or an expression.")
+                            else -> unresolvedLabels += line to target
                         }
                     }
                 }
+
+                // 3. every other operand must be a register, a number or a memory reference
+                args.forEachIndexed { index, operand ->
+                    if (operand.isEmpty()) return@forEachIndexed
+                    if (opcode in labelTargetInstructions && index == 0) return@forEachIndexed
+                    if (syntaxProblem(operand) != null) return@forEachIndexed
+                    if (!isValidOperand(operand)) {
+                        issues += ValidationIssue(line, "Operand ${index + 1}: " + operandProblem(operand, labels))
+                    }
+                }
+
+                // 4. operand shapes
                 if (opcode in registerOnlySource && args.firstOrNull()?.let(::isImmediateOperand) == true) {
                     issues += ValidationIssue(line, "$opcode does not accept an immediate value; use a register or memory operand.")
                 }
@@ -999,6 +1137,60 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (opcode in immediateDestination && args.firstOrNull()?.let(::isImmediateOperand) == true) {
                     issues += ValidationIssue(line, "The destination of $opcode cannot be an immediate value.")
                 }
+
+                // 5. both operands must be the same width
+                if (opcode in sizeChecked && args.size == 2) {
+                    val left = explicitWidth(args[0])
+                    val right = explicitWidth(args[1])
+                    if (left != null && right != null && left != right) {
+                        issues += ValidationIssue(
+                            line,
+                            "$opcode operands must be the same size: ${args[0]} is $left-bit but ${args[1]} is $right-bit."
+                        )
+                    }
+                }
+
+                // 6. a constant has to fit the operand that receives it
+                if (opcode in immediateRangeChecked && args.size == 2 && isValidOperand(args[1])) {
+                    val width = explicitWidth(args[0]) ?: if (!isMemoryOperand(args[0])) 16 else null
+                    val value = parseValue(args[1])
+                    if (width != null && value != null && !fits(value, width)) {
+                        issues += ValidationIssue(
+                            line,
+                            "$opcode cannot store $value in a $width-bit operand (allowed range ${rangeOf(width)}); it would be silently truncated."
+                        )
+                    }
+                }
+                if (opcode in setOf("SHR", "SHL", "SAL", "SAR", "ROL", "ROR", "RCL", "RCR") && args.size == 2) {
+                    val count = args[1].uppercase()
+                    if (count != "CL" && !isImmediateLiteral(count)) {
+                        issues += ValidationIssue(line, "The shift count of $opcode must be 1, CL, or an immediate value, not '${args[1]}'.")
+                    } else if (count != "CL") {
+                        val value = parseValue(args[1])
+                        if (value != null && value !in 0..255) {
+                            issues += ValidationIssue(line, "The shift count of $opcode must be between 0 and 255, not $value.")
+                        }
+                    }
+                }
+                if ((opcode == "IN" || opcode == "OUT") && args.size == 2) {
+                    val port = if (opcode == "IN") args[1] else args[0]
+                    val value = parseValue(port)
+                    if (value != null && value !in 0..0xFFFF) {
+                        issues += ValidationIssue(line, "The I/O port must be between 0 and 65535, not $value.")
+                    }
+                }
+
+                // 7. segment registers travel only with MOV, PUSH and POP
+                if (opcode !in segmentFriendly) {
+                    args.forEach { operand ->
+                        val register = normalizeRegister(operand)
+                        if (register != null && register in segmentRegisterNames) {
+                            issues += ValidationIssue(line, "$opcode cannot use the segment register $register; only MOV, PUSH and POP accept one.")
+                        }
+                    }
+                }
+
+                // 8. per-instruction specifics
                 if (opcode == "IN" && args.size == 2) {
                     val destination = args[0].uppercase()
                     if (destination != "AL" && destination != "AX") {
@@ -1011,10 +1203,13 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                         issues += ValidationIssue(line, "OUT must read from AL or AX, not '${args[1]}'.")
                     }
                 }
-                if (opcode in setOf("SHR", "SHL", "SAL", "SAR", "ROL", "ROR", "RCL", "RCR") && args.size == 2) {
-                    val count = args[1].uppercase()
-                    if (count != "CL" && !isImmediateLiteral(count)) {
-                        issues += ValidationIssue(line, "The shift count of $opcode must be 1, CL, or an immediate value, not '${args[1]}'.")
+                if (opcode == "INT") {
+                    val vector = args.firstOrNull()?.let(::parseValue)
+                    if (vector != null && vector != 0x21) {
+                        issues += ValidationIssue(
+                            line,
+                            "Only INT 21h is supported by this emulator; ${vector.toString(16).uppercase()}H has no handler here."
+                        )
                     }
                 }
                 if (opcode == "PUSH" && args.size == 1) {
@@ -1029,9 +1224,6 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (opcode in csDestinationForbidden && args.firstOrNull()?.let { it.uppercase() in unwritableRegisters } == true) {
                     issues += ValidationIssue(line, "${args[0].uppercase()} cannot be used as a destination of $opcode on the 8086.")
                 }
-                if (opcode in setOf("PUSH", "POP") && args.firstOrNull()?.uppercase()?.contains("BYTE PTR") == true) {
-                    issues += ValidationIssue(line, "$opcode needs a 16-bit operand; drop the BYTE PTR.")
-                }
                 if ((opcode == "XCHG") && args.size == 2 && args[1].uppercase() == "CS") {
                     issues += ValidationIssue(line, "XCHG cannot exchange CS on the 8086.")
                 }
@@ -1041,18 +1233,158 @@ class AssemblyEngine(val source: String, private val input: String = "") {
                 if (opcode == "INT" && args.firstOrNull()?.let(::isImmediateOperand) == false) {
                     issues += ValidationIssue(line, "INT requires an immediate interrupt vector, not '${args[0]}'.")
                 }
+                if (opcode in setOf("PUSH", "POP") && args.firstOrNull()?.uppercase()?.contains("BYTE PTR") == true) {
+                    issues += ValidationIssue(line, "$opcode needs a 16-bit operand; drop the BYTE PTR.")
+                }
                 if (opcode == "ESC" && args.isNotEmpty()) {
                     val spec = args[0].uppercase()
-                    val value = spec.toIntOrNull() ?: spec.removeSuffix("H").toIntOrNull(16)
+                    val value = parseValue(spec)
                     if (value == null || value !in 0..63) {
                         issues += ValidationIssue(line, "The ESC opcode must be an immediate value between 0 and 63.")
                     }
                 }
             }
+            if (instructions.none { it.second == "CALL" || it.second == "PUSH" }) {
+                instructions.filter { it.second in setOf("RET", "RETN", "RETF", "IRET") }.forEach { (line, opcode, _) ->
+                    issues += ValidationIssue(
+                        line,
+                        "$opcode returns to an address that was never pushed, because the program contains no CALL; " +
+                            "add the matching CALL or remove the $opcode."
+                    )
+                }
+            }
+            emptyLabelBodies.filter { it.first == lastContentLine }.forEach { (line, label) ->
+                issues += ValidationIssue(
+                    line,
+                    "Label '$label' is not followed by any instruction, so it points past the end of the program; " +
+                        "add the instruction it should mark, or remove the label."
+                )
+            }
             unresolvedLabels.forEach { (line, target) ->
-                if (target !in labels) issues += ValidationIssue(line, "Label '$target' is not defined; add '$target:' or correct the jump target.")
+                if (target !in labels) {
+                    val hint = closestMatch(target, labels.keys)?.let { " Did you mean '$it'?" }.orEmpty()
+                    issues += ValidationIssue(line, "Label '$target' is not defined; add '$target:' or correct the jump target.$hint")
+                }
             }
             return issues.sortedBy { it.line }
+        }
+
+        private fun explicitWidth(operand: String): Int? {
+            val value = operand.uppercase()
+            if (value.contains("BYTE PTR")) return 8
+            if (value.contains("WORD PTR")) return 16
+            val register = normalizeRegister(operand) ?: return null
+            return if (register in byteRegisters) 8 else 16
+        }
+
+        private fun normalizeRegister(operand: String): String? {
+            val value = operand
+                .replace("BYTE PTR", "").replace("WORD PTR", "").replace("FAR PTR", "").replace("NEAR PTR", "")
+                .replace(SEGMENT_PREFIX, "").trim()
+            return if (value in allRegisters) value else null
+        }
+
+        /** Non-throwing number parser used by the validator. */
+        private fun parseValue(raw: String): Int? {
+            val token = raw.trim().uppercase()
+            if (token.isEmpty()) return null
+            if (token.startsWith("'") && token.endsWith("'") && token.length == 3) return token[1].code
+            return try {
+                when {
+                    token.startsWith("0X") && token.length > 2 -> token.substring(2).toInt(16)
+                    token.endsWith("H") && token.length > 1 && token.first().isDigit() -> token.dropLast(1).toInt(16)
+                    token.endsWith("B") && token.length > 1 && token.dropLast(1).all { it == '0' || it == '1' } -> token.dropLast(1).toInt(2)
+                    token.endsWith("D") && token.length > 1 && token.dropLast(1).all { it.isDigit() } -> token.dropLast(1).toInt()
+                    token.matches(Regex("-?\\d+")) -> token.toInt()
+                    else -> null
+                }
+            } catch (e: NumberFormatException) { null }
+        }
+
+        private fun fits(value: Int, width: Int): Boolean =
+            if (width == 8) value in -128..255 else value in -32768..65535
+
+        private fun rangeOf(width: Int): String = if (width == 8) "-128..255" else "-32768..65535"
+
+        /** Reports characters that can never appear inside an operand. */
+        private fun syntaxProblem(operand: String): String? {
+            val quotes = operand.count { it == '\'' }
+            if (quotes % 2 != 0) return "Missing closing quote in '$operand': a character constant looks like 'A'."
+            if (quotes == 2) {
+                val inner = operand.substringAfter('\'').substringBeforeLast('\'')
+                if (inner.length > 1) return "Character constant $operand must contain exactly one character, for example 'A'."
+            }
+            if (quotes > 2) return "$operand must be a single character between quotes, for example 'A'."
+            val opens = operand.count { it == '[' }
+            val closes = operand.count { it == ']' }
+            if (opens != closes) return "Unbalanced brackets in '$operand': every '[' needs a matching ']'."
+            if (opens > 1) return "Only one memory reference is allowed per operand: '$operand'."
+            if (opens == 1 && operand.indexOf('[') > operand.indexOf(']')) {
+                return "'$operand' must close the memory reference with ']'."
+            }
+            return null
+        }
+
+        /** One shared diagnosis so the editor and the runtime explain a bad operand in exactly the same words. */
+        private fun operandProblem(operand: String, labels: Map<String, *>): String {
+            val value = operand.trim().uppercase()
+            return when {
+                value in labels -> "Label '$value' cannot be used as a value; labels are only valid as jump and call targets."
+                value in addressRegisters -> "'$value' cannot be used on its own; write it inside a memory reference such as [$value]."
+                value.matches(Regex("[A-F][0-9A-F]*H")) ->
+                    "Invalid number '$value': a hex constant must start with a digit, so write 0$value instead."
+                value.matches(Regex("^[0-9].*")) ->
+                    "Invalid number '$value': use decimal, hex with an H suffix (100H) or binary with a B suffix (100B)."
+                value.matches(Regex("[A-Z_.$?][A-Z0-9_.$?]*")) ->
+                    "Invalid register '$value': it is not an 8086 register." + registerHint(value).orEmpty()
+                else -> "Invalid operand '$value': it is not a register, a number or a memory reference."
+            }
+        }
+
+        private fun registerHint(operand: String): String? {
+            val value = operand.trim().uppercase()
+            if (!value.matches(Regex("[A-Z]{1,4}"))) return null
+            val suggestion = closestMatch(value, allRegisters) ?: return null
+            return " Did you mean $suggestion?"
+        }
+
+        private fun twoInstructionsHint(operand: String): String {
+            val tokens = operand.uppercase().split(WHITESPACE)
+            return if (tokens.size > 1 && tokens.any { it in supportedInstructions })
+                " Write only one instruction per line."
+            else ""
+        }
+
+        private fun closestMatch(word: String, candidates: Collection<String>): String? {
+            var best: String? = null
+            var bestDistance = 3
+            var tied = false
+            for (candidate in candidates) {
+                val distance = editDistance(word, candidate)
+                when {
+                    distance < bestDistance -> { bestDistance = distance; best = candidate; tied = false }
+                    distance == bestDistance && distance < 3 -> tied = true
+                }
+            }
+            return if (tied) null else best
+        }
+
+        /** Damerau-Levenshtein: swapping two neighbouring letters is one typo, so MVO is one step away from MOV. */
+        private fun editDistance(a: String, b: String): Int {
+            val d = Array(a.length + 1) { IntArray(b.length + 1) }
+            for (i in 0..a.length) d[i][0] = i
+            for (j in 0..b.length) d[0][j] = j
+            for (i in 1..a.length) {
+                for (j in 1..b.length) {
+                    val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                    var value = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+                    if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+                        value = minOf(value, d[i - 2][j - 2] + 1)
+                    }
+                    d[i][j] = value
+                }
+            }
+            return d[a.length][b.length]
         }
 
         private fun isValidOperand(raw: String): Boolean {
@@ -1085,7 +1417,7 @@ class AssemblyEngine(val source: String, private val input: String = "") {
             val value = raw.trim().uppercase()
             return value.matches(Regex("-?\\d+")) ||
                 value.matches(Regex("0X[0-9A-F]+")) ||
-                value.matches(Regex("[0-9A-F]+H")) ||
+                value.matches(Regex("[0-9][0-9A-F]*H")) ||
                 value.matches(Regex("[01]+B")) ||
                 (value.startsWith("'") && value.endsWith("'") && value.length == 3)
         }

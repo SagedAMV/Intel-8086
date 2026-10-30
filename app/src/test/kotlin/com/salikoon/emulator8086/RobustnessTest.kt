@@ -20,11 +20,13 @@ class RobustnessTest {
 
     // ------------------------------------------------------------- no raw JVM exceptions
 
-    @Test fun invalidNumbersReportTheOffendingToken() {
-        assertEquals("Invalid number 'B'", failureOf("MOV AX, B"))
+    @Test fun invalidOperandsReportTheOffendingToken() {
+        assertTrue(failureOf("MOV AX, B").startsWith("Invalid register 'B'"))
         assertEquals("Invalid number 'FOO'", failureOf("MOV AX, [BX+FOO]"))
-        assertEquals("Invalid number 'MYLABEL'", failureOf("MOV AX, MYLABEL\nMYLABEL: NOP"))
-        assertEquals("Invalid number 'H'", failureOf("MOV AX, H"))
+        assertTrue(failureOf("MOV AX, MYLABEL\nMYLABEL: NOP").startsWith("Label 'MYLABEL' cannot be used as a value"))
+        assertTrue(failureOf("MOV AX, H").startsWith("Invalid register 'H'"))
+        // the validator says the same thing and adds a suggestion
+        assertTrue(issuesOf("MOV AXX, 1").any { it.contains("'AXX'") && it.contains("did you mean AX", ignoreCase = true) })
     }
 
     @Test fun wrongOperandKindsAreRejectedWithClearMessages() {
@@ -61,11 +63,14 @@ class RobustnessTest {
         assertTrue(issuesOf("ESC 6, [BX]").isEmpty())
     }
 
-    @Test fun immediatesAreTruncatedToTheOperandWidth() {
-        // ADD AL, 300H must behave like ADD AL, 00H on a byte destination, not corrupt the flags
-        val cpu = AssemblyEngine("MOV AL, 1\nADD AL, 300\nHLT").run()
-        assertEquals(45, cpu.registers["AL"])            // 300 = 012CH -> 2CH = 44
-        assertEquals(0, cpu.flags["CF"])
+    @Test fun outOfRangeImmediatesAreRejectedNotTruncated() {
+        // round 4: a value that does not fit the destination is an error, on both sides, not a silent truncation
+        assertTrue(failureOf("ADD AL, 300").contains("cannot store 300 in a 8-bit operand"))
+        assertTrue(issuesOf("ADD AL, 300").any { it.contains("cannot store 300 in a 8-bit operand") })
+        // signed values inside the range are still stored as their two's complement
+        val cpu = AssemblyEngine("MOV AL, -1\nADD AL, 1\nHLT").run()
+        assertEquals(0, cpu.registers["AL"])
+        assertEquals(1, cpu.flags["CF"])
     }
 
     @Test fun ipIsNotWritableButCallRetMoveIt() {
