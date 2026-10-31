@@ -29,19 +29,23 @@ internal object UiKit {
 
     fun dp(activity: AppCompatActivity, value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
 
-    fun screen(activity: AppCompatActivity, title: String, back: Boolean = false): LinearLayout {
+    /**
+     * Builds the screen shell. [compact] shrinks the hero banner for working screens (editor,
+     * emulator) where the vertical space belongs to code, registers and flags instead of branding.
+     */
+    fun screen(activity: AppCompatActivity, title: String, back: Boolean = false, compact: Boolean = false): LinearLayout {
         activity.window.statusBarColor = 0xFF171D3B.toInt()
         activity.window.navigationBarColor = CANVAS
         @Suppress("DEPRECATION")
         run { activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR }
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 18), dp(activity, 14), dp(activity, 18), dp(activity, 12))
+            setPadding(dp(activity, 18), dp(activity, if (compact) 10 else 14), dp(activity, 18), dp(activity, 12))
             setBackgroundColor(CANVAS)
         }
         val hero = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 20), dp(activity, 16), dp(activity, 20), dp(activity, 20))
+            setPadding(dp(activity, 20), dp(activity, if (compact) 10 else 16), dp(activity, 20), dp(activity, if (compact) 12 else 20))
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF171D3B.toInt(), 0xFF303A7A.toInt(), 0xFF514BE5.toInt())).apply {
                 cornerRadius = dp(activity, 26).toFloat()
             }
@@ -58,7 +62,7 @@ internal object UiKit {
                 setOnClickListener { activity.finish() }
                 pressMotion(this)
             }
-            hero.addView(backButton, LinearLayout.LayoutParams(-2, dp(activity, 34)).apply { bottomMargin = dp(activity, 12) })
+            hero.addView(backButton, LinearLayout.LayoutParams(-2, dp(activity, if (compact) 30 else 34)).apply { bottomMargin = dp(activity, if (compact) 8 else 12) })
         }
         val brand = TextView(activity).apply {
             text = "8086  /  SYSTEM READY"; textSize = 10f; letterSpacing = .12f
@@ -66,10 +70,10 @@ internal object UiKit {
             setPadding(dp(activity, 10), dp(activity, 5), dp(activity, 10), dp(activity, 5))
             background = roundRect(activity, 0x2436D6C5, 0x4036D6C5)
         }
-        hero.addView(brand, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(activity, 8) })
-        hero.addView(text(activity, title, 27, Color.WHITE, true))
-        hero.addView(text(activity, "ASSEMBLY  ·  16-BIT LEARNING LAB", 10, 0xFFD9DDF7.toInt(), true))
-        root.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, 16) })
+        hero.addView(brand, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(activity, if (compact) 6 else 8) })
+        hero.addView(text(activity, title, if (compact) 22 else 27, Color.WHITE, true))
+        if (!compact) hero.addView(text(activity, "ASSEMBLY  ·  16-BIT LEARNING LAB", 10, 0xFFD9DDF7.toInt(), true))
+        root.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, if (compact) 10 else 16) })
         hero.post { hero.animate().alpha(1f).translationY(0f).setDuration(380).start() }
         activity.setContentView(root)
         return root
@@ -116,10 +120,10 @@ internal object UiKit {
         pressMotion(this)
     }
 
-    fun card(activity: AppCompatActivity, parent: LinearLayout, title: String, detail: String, action: () -> Unit) {
+    fun card(activity: AppCompatActivity, parent: LinearLayout, title: String, detail: String, icon: String? = null, action: () -> Unit) {
         val colorIndex = (title.hashCode().absoluteValueSafe() % badgeColors.size)
         val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val badgeText = when {
+        val badgeText = icon ?: when {
             title.contains("Create", true) || title.contains("Write", true) -> "+"
             title.contains("Open", true) -> "↗"
             title.contains("template", true) -> "▤"
@@ -177,9 +181,9 @@ internal object UiKit {
         })
     }
 
-    fun statusBar(activity: AppCompatActivity, parent: LinearLayout): TextView = TextView(activity).apply {
+    fun statusBar(activity: AppCompatActivity, parent: LinearLayout, maxHeightDp: Int = 190): TextView = TextView(activity).apply {
         visibility = View.GONE; textSize = 12f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.TOP or Gravity.START
-        maxHeight = dp(activity, 190); isVerticalScrollBarEnabled = true; android.text.method.ScrollingMovementMethod.getInstance().also { movementMethod = it }
+        maxHeight = dp(activity, maxHeightDp); isVerticalScrollBarEnabled = true; android.text.method.ScrollingMovementMethod.getInstance().also { movementMethod = it }
         setPadding(dp(activity, 13), dp(activity, 9), dp(activity, 13), dp(activity, 9))
         parent.addView(this, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(activity, 8) })
     }

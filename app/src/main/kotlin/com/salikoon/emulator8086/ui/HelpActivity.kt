@@ -26,7 +26,7 @@ class HelpActivity : AppCompatActivity() {
                 val item = instructions.getJSONObject(i)
                 val name = item.optString("Instruction", "Instruction")
                 val syntax = item.optString("Syntax", name)
-                UiKit.card(this, body, name, syntax) { showDetails(item) }
+                UiKit.card(this, body, name, syntax, icon = "?") { showDetails(item) }
             }
         } catch (e: Exception) { loadError = "Instruction reference unavailable: ${e.message ?: "unknown error"}" }
         body.addView(UiKit.text(this, "The emulator implements the full Intel 8086/8088 instruction set: data transfer and stack, arithmetic (including signed and BCD), logic, shifts and rotates, string instructions with REP/REPE/REPNE, all conditional jumps and loops, CALL/RET/IRET, flag control, IN/OUT ports, and DOS INT 21h services AH=1, 2, 9 and 4Ch. Assembler directives are not assembled.", 13, UiKit.MUTED).apply {

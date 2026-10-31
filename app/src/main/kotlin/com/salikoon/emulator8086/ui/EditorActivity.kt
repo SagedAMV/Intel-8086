@@ -31,7 +31,8 @@ class EditorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         title = intent.getStringExtra(AppKeys.TITLE) ?: "Untitled"
-        val root = UiKit.screen(this, "Assembly editor", back = true)
+        // Working screen: the compact hero keeps room for code and for the issue list.
+        val root = UiKit.screen(this, "Assembly editor", back = true, compact = true)
         val fileHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
         fileHeader.addView(UiKit.sectionLabel(this, "SOURCE CODE"), LinearLayout.LayoutParams(0, -2, 1f))
         fileHeader.addView(UiKit.text(this, title, 12, UiKit.MUTED, true).apply { gravity = android.view.Gravity.END })
@@ -49,7 +50,7 @@ class EditorActivity : AppCompatActivity() {
             typeface = Typeface.MONOSPACE; setPadding(UiKit.dp(this@EditorActivity, 14), UiKit.dp(this@EditorActivity, 14), UiKit.dp(this@EditorActivity, 14), UiKit.dp(this@EditorActivity, 14))
             setBackgroundColor(android.graphics.Color.TRANSPARENT); gravity = android.view.Gravity.TOP or android.view.Gravity.START
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-            setHorizontallyScrolling(true); isVerticalScrollBarEnabled = true
+            setHorizontallyScrolling(false); isVerticalScrollBarEnabled = true
         }
         val editorScroll = ScrollView(this).apply {
             addView(editor); isFillViewport = true; clipToPadding = false
@@ -60,9 +61,11 @@ class EditorActivity : AppCompatActivity() {
             setPadding(UiKit.dp(this@EditorActivity, 8), UiKit.dp(this@EditorActivity, 8), UiKit.dp(this@EditorActivity, 8), UiKit.dp(this@EditorActivity, 8))
             addView(editorScroll, FrameLayout.LayoutParams(-1, -1))
         }
+        editorSurface.minimumHeight = UiKit.dp(this@EditorActivity, 180)
         root.addView(editorSurface, LinearLayout.LayoutParams(-1, 0, 1f).apply { bottomMargin = UiKit.dp(this@EditorActivity, 6) })
         root.addView(UiKit.text(this, "Supported: MOV · arithmetic · logic · jumps · loops · flags · INT 21h", 11, UiKit.MUTED))
-        status = UiKit.statusBar(this, root)
+        // The issue list is scrollable and capped so that a long list can never squash the code area.
+        status = UiKit.statusBar(this, root, maxHeightDp = 120)
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             imeVisibleFromInsets = insets.isVisible(WindowInsetsCompat.Type.ime())
             refreshKeyboardVisibility()
@@ -119,7 +122,7 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun formatIssues(issues: List<com.salikoon.emulator8086.engine.ValidationIssue>): String = buildString {
-        append("Found ${issues.size} issue(s):")
+        append(if (issues.size == 1) "Found 1 issue:" else "Found ${issues.size} issues:")
         issues.forEach { issue -> append("\nLine ${issue.line}: ${issue.message}") }
     }
 

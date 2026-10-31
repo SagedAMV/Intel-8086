@@ -22,7 +22,8 @@ class EmulateActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         source = intent.getStringExtra(AppKeys.CODE).orEmpty()
-        val root = UiKit.screen(this, "8086 Emulator", back = true)
+        // Working screen: compact hero so registers, flags and output keep the vertical space.
+        val root = UiKit.screen(this, "8086 Emulator", back = true, compact = true)
         root.addView(UiKit.sectionLabel(this, "LIVE CPU SESSION"))
         root.addView(UiKit.text(this, intent.getStringExtra(AppKeys.TITLE) ?: "Program state", 13, UiKit.MUTED, true))
         input = EditText(this).apply {
@@ -35,7 +36,7 @@ class EmulateActivity : AppCompatActivity() {
             setPadding(UiKit.dp(this@EmulateActivity, 14), 0, UiKit.dp(this@EmulateActivity, 14), 0)
             background = UiKit.surface(this@EmulateActivity)
         }
-        root.addView(input, LinearLayout.LayoutParams(-1, UiKit.dp(this@EmulateActivity, 50)).apply { bottomMargin = UiKit.dp(this@EmulateActivity, 8) })
+        root.addView(input, LinearLayout.LayoutParams(-1, UiKit.dp(this@EmulateActivity, 46)).apply { bottomMargin = UiKit.dp(this@EmulateActivity, 8) })
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(UiKit.button(this, "Step") { executeStep() }, LinearLayout.LayoutParams(0, UiKit.dp(this@EmulateActivity, 48), 1f).apply { rightMargin = UiKit.dp(this@EmulateActivity, 4) })
         controls.addView(UiKit.button(this, "Run ▶") { runToEnd() }, LinearLayout.LayoutParams(0, UiKit.dp(this@EmulateActivity, 48), 1f).apply { leftMargin = UiKit.dp(this@EmulateActivity, 4); rightMargin = UiKit.dp(this@EmulateActivity, 4) })

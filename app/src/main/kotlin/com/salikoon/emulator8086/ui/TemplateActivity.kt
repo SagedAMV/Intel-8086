@@ -21,7 +21,7 @@ class TemplateActivity : AppCompatActivity() {
                 val item = templates.getJSONObject(i)
                 val name = item.optString("Title", "Example ${i + 1}")
                 val code = item.optString("Description", "")
-                UiKit.card(this, body, name, code.lineSequence().firstOrNull().orEmpty()) {
+                UiKit.card(this, body, name, code.lineSequence().firstOrNull().orEmpty(), icon = "▤") {
                     startActivity(Intent(this, EditorActivity::class.java).putExtra(AppKeys.CODE, code).putExtra(AppKeys.TITLE, name))
                     finish()
                 }
